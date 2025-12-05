@@ -9,12 +9,11 @@
  */
 
 import { useState, useEffect, useMemo, memo, useCallback } from 'react';
-import { Search, RefreshCw, Zap, Clock, Database } from 'lucide-react';
+import { Search, RefreshCw, Zap, Clock, AlertCircle } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { StockCard } from '@/components/watchlist/StockCard';
 import { PortfolioSummary } from '@/components/portfolio/PortfolioSummary';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
-import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import * as marketData from '@/services/marketData';
 import { getMockDailyData } from '@/services/api/polygon';
 import {
@@ -58,10 +57,6 @@ export const WatchlistView = memo(function WatchlistView({
   const [dataSource, setDataSource] = useState<DataSource>('mock');
 
   const { items: watchlistItems, updateStock } = useWatchlistStore();
-  const { getApiKey } = useApiKeysStore();
-  const polygonKey = getApiKey('polygon');
-  const alphaVantageKey = getApiKey('alphavantage');
-  const hasMarketDataKey = !!(polygonKey || alphaVantageKey);
 
   // Get symbols from watchlist
   const symbols = useMemo(
@@ -230,27 +225,25 @@ export const WatchlistView = memo(function WatchlistView({
 
       {/* Data Source Indicator */}
       <div className="mx-5 mb-3">
-        {dataSource === 'polygon' && (
+        {dataSource === 'polygon' ? (
           <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
             <Zap size={16} className="text-emerald-400" />
             <p className="text-emerald-400 text-sm">
-              Real-time data via Polygon.io
+              Real-time via Polygon.io
             </p>
           </div>
-        )}
-        {dataSource === 'alphavantage' && (
-          <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
-            <Clock size={16} className="text-blue-400" />
-            <p className="text-blue-400 text-sm">
+        ) : dataSource === 'alphavantage' ? (
+          <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+            <Clock size={16} className="text-amber-400" />
+            <p className="text-amber-400 text-sm">
               Delayed quotes via Alpha Vantage (rate limited)
             </p>
           </div>
-        )}
-        {dataSource === 'mock' && !hasMarketDataKey && (
-          <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-            <Database size={16} className="text-amber-400" />
-            <p className="text-amber-400 text-sm">
-              Using demo data. Add Polygon.io or Alpha Vantage API key in Settings for real prices.
+        ) : (
+          <div className="flex items-center gap-2 p-3 bg-slate-500/10 border border-slate-500/30 rounded-xl">
+            <AlertCircle size={16} className="text-slate-400" />
+            <p className="text-slate-400 text-sm">
+              Demo mode (no API key). Add API key in Settings for real data.
             </p>
           </div>
         )}
