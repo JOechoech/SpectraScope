@@ -1,38 +1,173 @@
-import { useState, useMemo, memo } from 'react';
-import { Search, TrendingUp, TrendingDown } from 'lucide-react';
+/**
+ * WatchlistView - Home screen showing tracked stocks
+ *
+ * Features:
+ * - Displays watchlist with real-time data when API key available
+ * - Falls back to mock data without API key
+ * - Signal score calculation and glow effects
+ * - Pull to refresh functionality
+ */
+
+import { useState, useEffect, useMemo, memo, useCallback } from 'react';
+import { Search, RefreshCw } from 'lucide-react';
 import { Header } from '@/components/layout';
-import { Sparkline } from '@/components/charts';
+import { StockCard } from '@/components/watchlist/StockCard';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
-import type { Stock } from '@/types';
+import { useApiKeysStore } from '@/stores/useApiKeysStore';
+import {
+  getQuote,
+  getDailyData,
+  getMockQuote,
+  getMockDailyData,
+} from '@/services/api/alphavantage';
+import {
+  calculateRSI,
+  calculateMACD,
+  calculateSMA,
+} from '@/utils/technicals';
+import {
+  getRSISignal,
+  getMACDSignal,
+  getSMASignal,
+  calculateAggregateScore,
+} from '@/utils/signals';
+import type { StockQuote } from '@/types';
+import type { AggregateScore } from '@/utils/signals';
 
 interface WatchlistViewProps {
-  onSelectStock: (stock: Stock) => void;
+  onSelectStock: (symbol: string) => void;
   onOpenSettings: () => void;
+}
+
+interface StockData {
+  quote: StockQuote;
+  sparkline: number[];
+  signalScore?: AggregateScore;
+  loading: boolean;
+  error?: string;
 }
 
 /**
  * WatchlistView - Home screen showing tracked stocks
- * Uses Zustand store for state management
  */
 export const WatchlistView = memo(function WatchlistView({
   onSelectStock,
   onOpenSettings,
 }: WatchlistViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const { items: stocks } = useWatchlistStore();
+  const [stockData, setStockData] = useState<Record<string, StockData>>({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const filteredStocks = useMemo(() => {
-    if (!searchQuery.trim()) return stocks;
+  const { items: watchlistItems, updateStock } = useWatchlistStore();
+  const { getApiKey } = useApiKeysStore();
+  const alphaVantageKey = getApiKey('alphavantage');
+
+  // Get symbols from watchlist
+  const symbols = useMemo(
+    () => watchlistItems.map((item) => item.symbol),
+    [watchlistItems]
+  );
+
+  // Filter stocks based on search
+  const filteredSymbols = useMemo(() => {
+    if (!searchQuery.trim()) return symbols;
     const query = searchQuery.toLowerCase();
-    return stocks.filter(
-      (s) =>
-        s.symbol.toLowerCase().includes(query) ||
-        s.name.toLowerCase().includes(query)
-    );
-  }, [stocks, searchQuery]);
+    return symbols.filter((symbol) => {
+      const item = watchlistItems.find((w) => w.symbol === symbol);
+      return (
+        symbol.toLowerCase().includes(query) ||
+        item?.name?.toLowerCase().includes(query)
+      );
+    });
+  }, [symbols, searchQuery, watchlistItems]);
+
+  // Load stock data
+  const loadStockData = useCallback(async () => {
+    setIsRefreshing(true);
+
+    for (const symbol of symbols) {
+      try {
+        let quote: StockQuote;
+        let prices: number[] = [];
+
+        if (alphaVantageKey) {
+          // Real API data
+          quote = await getQuote(symbol, alphaVantageKey);
+          const daily = await getDailyData(symbol, alphaVantageKey, 'compact');
+          prices = daily.slice(0, 20).map((d) => d.close);
+
+          // Rate limiting delay
+          await new Promise((r) => setTimeout(r, 1200));
+        } else {
+          // Mock data
+          quote = getMockQuote(symbol);
+          const mockDaily = getMockDailyData(symbol, 30);
+          prices = mockDaily.slice(-20).map((d) => d.close);
+        }
+
+        // Calculate signal score if we have enough data
+        let signalScore: AggregateScore | undefined;
+        if (prices.length >= 20) {
+          try {
+            const rsi = calculateRSI(prices);
+            const macd = calculateMACD(prices);
+            const sma20 = calculateSMA(prices, 20);
+
+            const signals = [
+              getRSISignal(rsi),
+              getMACDSignal(macd.histogram, macd.histogram - macd.signal),
+              getSMASignal(quote.price, sma20, 20),
+            ];
+
+            signalScore = calculateAggregateScore(signals);
+          } catch (e) {
+            console.warn('Signal calculation error:', e);
+          }
+        }
+
+        // Update stock data
+        setStockData((prev) => ({
+          ...prev,
+          [symbol]: {
+            quote,
+            sparkline: prices,
+            signalScore,
+            loading: false,
+          },
+        }));
+
+        // Also update the store with latest price
+        updateStock(symbol, {
+          price: quote.price,
+          change: quote.change,
+          changePercent: quote.changePercent,
+          sparkline: prices,
+        });
+      } catch (error) {
+        console.error(`Error loading ${symbol}:`, error);
+        setStockData((prev) => ({
+          ...prev,
+          [symbol]: {
+            ...prev[symbol],
+            loading: false,
+            error: 'Failed to load',
+          },
+        }));
+      }
+    }
+
+    setIsRefreshing(false);
+  }, [symbols, alphaVantageKey, updateStock]);
+
+  // Initial load
+  useEffect(() => {
+    if (symbols.length > 0) {
+      loadStockData();
+    }
+  }, [symbols.length]); // Only reload when symbols change
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-black pb-24">
       {/* Header */}
       <Header
         title="Watchlist"
@@ -41,9 +176,9 @@ export const WatchlistView = memo(function WatchlistView({
         onSettings={onOpenSettings}
       />
 
-      {/* Search */}
-      <div className="px-5 py-3">
-        <div className="relative">
+      {/* Search & Refresh */}
+      <div className="px-5 py-3 flex gap-3">
+        <div className="relative flex-1">
           <Search
             size={18}
             className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
@@ -56,20 +191,60 @@ export const WatchlistView = memo(function WatchlistView({
             className="input-field pl-12"
           />
         </div>
+        <button
+          onClick={loadStockData}
+          disabled={isRefreshing}
+          className={`p-3 rounded-xl transition-all ${
+            isRefreshing
+              ? 'bg-slate-800 text-slate-500'
+              : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50'
+          }`}
+        >
+          <RefreshCw
+            size={20}
+            className={isRefreshing ? 'animate-spin' : ''}
+          />
+        </button>
       </div>
 
-      {/* Stock List */}
-      <div className="px-5 py-2 space-y-3 pb-32">
-        {filteredStocks.map((stock, index) => (
-          <StockCard
-            key={stock.symbol}
-            stock={stock}
-            index={index}
-            onSelect={() => onSelectStock(stock)}
-          />
-        ))}
+      {/* API Key Warning */}
+      {!alphaVantageKey && (
+        <div className="mx-5 mb-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+          <p className="text-amber-400 text-sm">
+            Using mock data. Add Alpha Vantage API key in Settings for real
+            prices.
+          </p>
+        </div>
+      )}
 
-        {filteredStocks.length === 0 && (
+      {/* Stock List */}
+      <div className="px-5 py-2 space-y-3">
+        {filteredSymbols.map((symbol) => {
+          const data = stockData[symbol];
+          const watchlistItem = watchlistItems.find(
+            (w) => w.symbol === symbol
+          );
+
+          if (!data || data.loading) {
+            return <StockCardSkeleton key={symbol} />;
+          }
+
+          return (
+            <StockCard
+              key={symbol}
+              symbol={symbol}
+              name={watchlistItem?.name || symbol}
+              price={data.quote.price}
+              change={data.quote.change}
+              changePercent={data.quote.changePercent}
+              sparklineData={data.sparkline}
+              signalScore={data.signalScore}
+              onClick={() => onSelectStock(symbol)}
+            />
+          );
+        })}
+
+        {filteredSymbols.length === 0 && (
           <div className="text-center py-12">
             <p className="text-slate-500">No stocks found</p>
             <p className="text-slate-600 text-sm mt-1">
@@ -82,73 +257,25 @@ export const WatchlistView = memo(function WatchlistView({
   );
 });
 
-// Stock Card Component
-interface StockCardProps {
-  stock: Stock;
-  index: number;
-  onSelect: () => void;
-}
-
-const StockCard = memo(function StockCard({
-  stock,
-  index,
-  onSelect,
-}: StockCardProps) {
-  const isPositive = stock.change >= 0;
-
+/**
+ * Skeleton loading state for stock card
+ */
+function StockCardSkeleton() {
   return (
-    <button
-      onClick={onSelect}
-      className="w-full p-4 bg-slate-900/30 hover:bg-slate-800/40 border border-slate-800/50 rounded-2xl transition-all duration-300 hover:scale-[1.01] group animate-fade-in"
-      style={{ animationDelay: `${index * 50}ms` }}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          {/* Symbol Badge */}
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">
-              {stock.symbol.slice(0, 2)}
-            </span>
-          </div>
-
-          {/* Stock Info */}
-          <div className="text-left">
-            <h3 className="text-white font-semibold text-lg group-hover:text-blue-400 transition-colors">
-              {stock.symbol}
-            </h3>
-            <p className="text-slate-500 text-sm">{stock.name}</p>
-          </div>
+    <div className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4 animate-pulse">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <div className="h-5 bg-slate-800 rounded w-16 mb-2" />
+          <div className="h-4 bg-slate-800 rounded w-24" />
         </div>
-
-        <div className="flex items-center gap-4">
-          {/* Sparkline */}
-          {stock.sparkline && stock.sparkline.length > 0 && (
-            <Sparkline data={stock.sparkline} positive={isPositive} />
-          )}
-
-          {/* Price Info */}
-          <div className="text-right min-w-[100px]">
-            <p className="text-white font-semibold text-lg">
-              ${stock.price.toFixed(2)}
-            </p>
-            <p
-              className={`text-sm font-medium flex items-center justify-end gap-1 ${
-                isPositive ? 'text-emerald-400' : 'text-rose-400'
-              }`}
-            >
-              {isPositive ? (
-                <TrendingUp size={14} />
-              ) : (
-                <TrendingDown size={14} />
-              )}
-              {isPositive ? '+' : ''}
-              {stock.changePercent.toFixed(2)}%
-            </p>
-          </div>
+        <div className="text-right">
+          <div className="h-5 bg-slate-800 rounded w-20 mb-2" />
+          <div className="h-4 bg-slate-800 rounded w-16" />
         </div>
       </div>
-    </button>
+      <div className="h-8 bg-slate-800 rounded w-full" />
+    </div>
   );
-});
+}
 
 export default WatchlistView;
