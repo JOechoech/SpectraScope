@@ -6,12 +6,14 @@
  * - Price with change indicator (green/red)
  * - Mini sparkline chart
  * - Signal score badge
+ * - Holdings badge with value
  * - Glow effect for strong signals (>=80% bullish or <=20%)
  */
 
 import { memo } from 'react';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { SignalBadge } from '@/components/ui/SignalBadge';
+import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import type { AggregateScore } from '@/utils/signals';
 
 export interface StockCardProps {
@@ -43,6 +45,11 @@ export const StockCard = memo(function StockCard({
   signalScore,
   onClick,
 }: StockCardProps) {
+  const { holdings } = useWatchlistStore();
+  const holding = holdings[symbol];
+  const shares = holding?.shares || 0;
+  const holdingValue = shares * price;
+
   const isPositive = change >= 0;
 
   // Determine glow effect based on signal score
@@ -71,7 +78,14 @@ export const StockCard = memo(function StockCard({
       {/* Top Row: Symbol & Price */}
       <div className="flex items-start justify-between mb-1">
         <div>
-          <h3 className="text-white font-semibold text-lg">{symbol}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-white font-semibold text-lg">{symbol}</h3>
+            {shares > 0 && (
+              <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
+                {shares} shares
+              </span>
+            )}
+          </div>
           <p className="text-slate-400 text-sm truncate max-w-[180px]">{name}</p>
         </div>
         <div className="text-right">
@@ -88,6 +102,19 @@ export const StockCard = memo(function StockCard({
           </p>
         </div>
       </div>
+
+      {/* Holdings Value Row */}
+      {shares > 0 && (
+        <div className="flex justify-between items-center py-2 border-t border-slate-800/50 mt-2 mb-1">
+          <span className="text-slate-400 text-sm">Your Value</span>
+          <span className="text-white font-medium">
+            ${holdingValue.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </span>
+        </div>
+      )}
 
       {/* Bottom Row: Sparkline & Signal Score */}
       <div className="flex items-center justify-between mt-3">

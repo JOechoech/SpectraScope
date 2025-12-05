@@ -12,6 +12,7 @@ import { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { Search, RefreshCw, Zap, Clock, Database } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { StockCard } from '@/components/watchlist/StockCard';
+import { PortfolioSummary } from '@/components/portfolio/PortfolioSummary';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import * as marketData from '@/services/marketData';
@@ -253,6 +254,19 @@ export const WatchlistView = memo(function WatchlistView({
             </p>
           </div>
         )}
+      </div>
+
+      {/* Portfolio Summary */}
+      <div className="px-5 mb-3">
+        <PortfolioSummary
+          quotes={
+            new Map(
+              Object.entries(stockData)
+                .filter(([, data]) => data?.quote)
+                .map(([symbol, data]) => [symbol, data.quote])
+            )
+          }
+        />
       </div>
 
       {/* Stock List */}
