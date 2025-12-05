@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { WatchlistView, DetailView, SettingsView, SearchView } from '@/views';
 import { Navigation } from '@/components/layout';
-import type { Stock, ViewName } from '@/types';
+import type { ViewName } from '@/types';
 
 /**
  * SpectraScope - Main App Component
@@ -9,16 +9,16 @@ import type { Stock, ViewName } from '@/types';
  */
 export default function App() {
   const [view, setView] = useState<ViewName>('watchlist');
-  const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
-  const handleSelectStock = useCallback((stock: Stock) => {
-    setSelectedStock(stock);
+  const handleSelectStock = useCallback((symbol: string) => {
+    setSelectedSymbol(symbol);
     setView('detail');
   }, []);
 
   const handleBack = useCallback(() => {
     setView('watchlist');
-    setSelectedStock(null);
+    setSelectedSymbol(null);
   }, []);
 
   const handleOpenSettings = useCallback(() => {
@@ -27,7 +27,7 @@ export default function App() {
 
   const handleNavigate = useCallback((newView: ViewName) => {
     if (newView !== 'detail') {
-      setSelectedStock(null);
+      setSelectedSymbol(null);
     }
     setView(newView);
   }, []);
@@ -69,8 +69,8 @@ export default function App() {
         />
       )}
 
-      {view === 'detail' && selectedStock && (
-        <DetailView stock={selectedStock} onBack={handleBack} />
+      {view === 'detail' && selectedSymbol && (
+        <DetailView symbol={selectedSymbol} onBack={handleBack} />
       )}
 
       {view === 'settings' && (

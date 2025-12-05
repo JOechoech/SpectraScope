@@ -1,23 +1,30 @@
 import { useState, useMemo, memo, useCallback } from 'react';
 import { Search, TrendingUp, History, Sparkles, X } from 'lucide-react';
 import { Header } from '@/components/layout';
-import type { Stock } from '@/types';
+
+interface Stock {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+}
 
 interface SearchViewProps {
-  onSelectStock: (stock: Stock) => void;
+  onSelectStock: (symbol: string) => void;
   onBack: () => void;
 }
 
 // Popular stocks for suggestions
 const popularStocks: Stock[] = [
-  { symbol: 'AAPL', name: 'Apple Inc.', price: 189.84, change: 2.35, changePercent: 1.25, sparkline: [] },
-  { symbol: 'MSFT', name: 'Microsoft Corporation', price: 378.91, change: 4.21, changePercent: 1.12, sparkline: [] },
-  { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 141.80, change: 1.92, changePercent: 1.37, sparkline: [] },
-  { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 178.25, change: -1.45, changePercent: -0.81, sparkline: [] },
-  { symbol: 'NVDA', name: 'NVIDIA Corporation', price: 495.22, change: 12.34, changePercent: 2.56, sparkline: [] },
-  { symbol: 'META', name: 'Meta Platforms Inc.', price: 505.35, change: 8.76, changePercent: 1.76, sparkline: [] },
-  { symbol: 'TSLA', name: 'Tesla Inc.', price: 248.50, change: -3.25, changePercent: -1.29, sparkline: [] },
-  { symbol: 'BRK.B', name: 'Berkshire Hathaway', price: 362.45, change: 1.23, changePercent: 0.34, sparkline: [] },
+  { symbol: 'AAPL', name: 'Apple Inc.', price: 189.84, change: 2.35, changePercent: 1.25 },
+  { symbol: 'MSFT', name: 'Microsoft Corporation', price: 378.91, change: 4.21, changePercent: 1.12 },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 141.80, change: 1.92, changePercent: 1.37 },
+  { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 178.25, change: -1.45, changePercent: -0.81 },
+  { symbol: 'NVDA', name: 'NVIDIA Corporation', price: 495.22, change: 12.34, changePercent: 2.56 },
+  { symbol: 'META', name: 'Meta Platforms Inc.', price: 505.35, change: 8.76, changePercent: 1.76 },
+  { symbol: 'TSLA', name: 'Tesla Inc.', price: 248.50, change: -3.25, changePercent: -1.29 },
+  { symbol: 'BRK.B', name: 'Berkshire Hathaway', price: 362.45, change: 1.23, changePercent: 0.34 },
 ];
 
 /**
@@ -46,10 +53,7 @@ export const SearchView = memo(function SearchView({
   }, []);
 
   const handleQuickSelect = useCallback((symbol: string) => {
-    const stock = popularStocks.find((s) => s.symbol === symbol);
-    if (stock) {
-      onSelectStock(stock);
-    }
+    onSelectStock(symbol);
   }, [onSelectStock]);
 
   return (
@@ -96,7 +100,7 @@ export const SearchView = memo(function SearchView({
               <SearchResultItem
                 key={stock.symbol}
                 stock={stock}
-                onSelect={() => onSelectStock(stock)}
+                onSelect={() => onSelectStock(stock.symbol)}
                 isLast={index === filteredStocks.length - 1}
               />
             ))}
@@ -151,7 +155,7 @@ export const SearchView = memo(function SearchView({
                 key={stock.symbol}
                 stock={stock}
                 index={index}
-                onSelect={() => onSelectStock(stock)}
+                onSelect={() => onSelectStock(stock.symbol)}
               />
             ))}
           </div>

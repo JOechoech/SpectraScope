@@ -348,6 +348,69 @@ export async function searchSymbols(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// MOCK DATA (for development without API key)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MOCK_PRICES: Record<string, number> = {
+  AAPL: 182.52,
+  MSFT: 425.30,
+  GOOGL: 175.20,
+  NVDA: 892.40,
+  TSLA: 248.50,
+  AMZN: 178.90,
+  META: 505.75,
+  BRK: 412.30,
+  JPM: 198.45,
+  V: 275.60,
+};
+
+export function getMockQuote(symbol: string): StockQuote {
+  const basePrice = MOCK_PRICES[symbol] || 100 + Math.random() * 200;
+  const change = (Math.random() - 0.5) * 10;
+  const changePercent = (change / basePrice) * 100;
+
+  return {
+    symbol,
+    open: basePrice - Math.random() * 2,
+    high: basePrice * 1.02,
+    low: basePrice * 0.98,
+    price: basePrice,
+    volume: Math.floor(Math.random() * 50000000),
+    latestTradingDay: new Date().toISOString().split('T')[0],
+    previousClose: basePrice - change,
+    change,
+    changePercent,
+  };
+}
+
+export function getMockDailyData(
+  symbol: string,
+  days: number = 100
+): HistoricalDataPoint[] {
+  const data: HistoricalDataPoint[] = [];
+  let price = MOCK_PRICES[symbol] || 150;
+
+  for (let i = days; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+
+    const dailyChange = (Math.random() - 0.5) * 5;
+    price = Math.max(50, price + dailyChange);
+
+    data.push({
+      date: date.toISOString().split('T')[0],
+      open: price - Math.random() * 2,
+      high: price + Math.random() * 3,
+      low: price - Math.random() * 3,
+      close: price,
+      volume: Math.floor(Math.random() * 50000000),
+    });
+  }
+
+  return data;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // AGGREGATED TECHNICALS (for Quick Scan)
 // ═══════════════════════════════════════════════════════════════════════════
 
