@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#000000" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SpectraScope" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    
+    <!-- SEO -->
+    <meta name="description" content="AI-Powered Investment Analysis with cost control. Generate Bull, Bear, and Base Case scenarios for any stock." />
+    <meta name="keywords" content="investment, stocks, AI, analysis, finance, trading" />
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="SpectraScope" />
+    <meta property="og:description" content="AI-Powered Investment Analysis" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/og-image.png" />
+    
+    <title>SpectraScope - AI Investment Analysis</title>
+    
+    <!-- Preconnect to API endpoints -->
+    <link rel="preconnect" href="https://www.alphavantage.co" />
+    <link rel="preconnect" href="https://api.anthropic.com" />
+    
+    <style>
+      /* Critical CSS for initial load */
+      html, body, #root {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        background-color: #000000;
+        color: #f1f5f9;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      
+      /* Loading spinner */
+      .initial-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #000000;
+      }
+      
+      .loader-spinner {
+        width: 48px;
+        height: 48px;
+        border: 3px solid #1e293b;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="initial-loader">
+        <div class="loader-spinner"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
