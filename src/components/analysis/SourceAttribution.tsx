@@ -44,7 +44,7 @@ const sourceConfigs: SourceConfig[] = [
     shortLabel: 'Tech',
     icon: BarChart3,
     emoji: '📊',
-    description: 'RSI, MACD, Moving Averages',
+    description: 'RSI, MACD, Moving Averages (Client)',
     color: 'text-blue-400',
   },
   {
@@ -53,7 +53,7 @@ const sourceConfigs: SourceConfig[] = [
     shortLabel: 'News',
     icon: Newspaper,
     emoji: '📰',
-    description: 'Financial news analysis',
+    description: 'NewsAPI headlines & sentiment',
     color: 'text-amber-400',
   },
   {
@@ -62,7 +62,7 @@ const sourceConfigs: SourceConfig[] = [
     shortLabel: 'Social',
     icon: MessageCircle,
     emoji: '🐦',
-    description: 'Twitter/X via Grok',
+    description: 'X/Twitter via Grok (xAI)',
     color: 'text-cyan-400',
   },
   {
@@ -71,7 +71,7 @@ const sourceConfigs: SourceConfig[] = [
     shortLabel: 'Research',
     icon: Search,
     emoji: '🔍',
-    description: 'Perplexity AI research',
+    description: 'Analyst data via Gemini (Google)',
     color: 'text-purple-400',
   },
   {
@@ -80,7 +80,7 @@ const sourceConfigs: SourceConfig[] = [
     shortLabel: 'Options',
     icon: TrendingUp,
     emoji: '📈',
-    description: 'Institutional positioning',
+    description: 'Institutional positioning (Polygon)',
     color: 'text-emerald-400',
   },
 ];

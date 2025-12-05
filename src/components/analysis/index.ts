@@ -9,3 +9,7 @@ export {
   SourceAttributionInline,
 } from './SourceAttribution';
 export type { SourceAttributionProps } from './SourceAttribution';
+export { AIInsightsPanel } from './AIInsightsPanel';
+export type { AIInsightsPanelProps } from './AIInsightsPanel';
+export { NewsPanel } from './NewsPanel';
+export { TechnicalSignalsPanel } from './TechnicalSignalsPanel';
