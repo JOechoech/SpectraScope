@@ -119,6 +119,7 @@ export interface DeepDiveResult {
   };
   confidence: number;
   reasoning: string;
+  bottomLine?: string; // Claude's 5-10 sentence investor summary
   tokenUsage?: {
     input: number;
     output: number;

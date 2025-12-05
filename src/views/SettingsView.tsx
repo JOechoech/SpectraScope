@@ -30,7 +30,11 @@ import { Header } from '@/components/layout';
 import { ApiKeyInput, ActiveSourcesCard } from '@/components/settings';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useAnalysisStore } from '@/stores/useAnalysisStore';
-import type { ApiKeys, AiProvider } from '@/types';
+import { useSettingsStore } from '@/stores/useSettingsStore';
+import type { ApiKeys } from '@/types';
+
+// App version
+const APP_VERSION = '1.0.0';
 
 interface SettingsViewProps {
   onBack: () => void;
@@ -136,11 +140,10 @@ export const SettingsView = memo(function SettingsView({
     getApiKey,
     setApiKey,
     validateApiKey,
-    defaultAiProvider,
-    setDefaultAiProvider,
   } = useApiKeysStore();
 
   const { totalCost, totalAnalyses, clearHistory } = useAnalysisStore();
+  const { oledMode, setOledMode } = useSettingsStore();
 
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>(() => {
@@ -152,7 +155,6 @@ export const SettingsView = memo(function SettingsView({
     });
     return initial;
   });
-  const [darkMode, setDarkMode] = useState(true);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const handleSave = useCallback(
@@ -361,30 +363,6 @@ export const SettingsView = memo(function SettingsView({
           </div>
         </Section>
 
-        {/* AI Provider Selection */}
-        <Section
-          icon={Sparkles}
-          iconGradient="from-amber-500/20 to-orange-500/20"
-          iconColor="text-amber-400"
-          title="AI Provider"
-          subtitle="Select default AI engine"
-        >
-          <div className="flex gap-3">
-            <ProviderButton
-              provider="anthropic"
-              label="Claude"
-              isActive={defaultAiProvider === 'anthropic'}
-              onClick={() => setDefaultAiProvider('anthropic')}
-            />
-            <ProviderButton
-              provider="openai"
-              label="GPT-4"
-              isActive={defaultAiProvider === 'openai'}
-              onClick={() => setDefaultAiProvider('openai')}
-            />
-          </div>
-        </Section>
-
         {/* Appearance Section */}
         <Section
           icon={Moon}
@@ -397,26 +375,26 @@ export const SettingsView = memo(function SettingsView({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-slate-800/50">
-                  {darkMode ? (
-                    <Moon size={18} className="text-slate-400" />
+                  {oledMode ? (
+                    <Moon size={18} className="text-purple-400" />
                   ) : (
                     <Sun size={18} className="text-amber-400" />
                   )}
                 </div>
                 <div>
-                  <h3 className="text-white font-medium">Dark Mode</h3>
-                  <p className="text-slate-500 text-xs">OLED-optimized theme</p>
+                  <h3 className="text-white font-medium">OLED Mode</h3>
+                  <p className="text-slate-500 text-xs">True black backgrounds for OLED screens</p>
                 </div>
               </div>
               <button
-                onClick={() => setDarkMode(!darkMode)}
+                onClick={() => setOledMode(!oledMode)}
                 className={`w-14 h-8 rounded-full transition-all duration-300 ${
-                  darkMode ? 'bg-blue-500' : 'bg-slate-700'
+                  oledMode ? 'bg-blue-500' : 'bg-slate-700'
                 }`}
               >
                 <div
                   className={`w-6 h-6 rounded-full bg-white shadow-lg transition-transform duration-300 ${
-                    darkMode ? 'translate-x-7' : 'translate-x-1'
+                    oledMode ? 'translate-x-7' : 'translate-x-1'
                   }`}
                 />
               </button>
@@ -431,7 +409,7 @@ export const SettingsView = memo(function SettingsView({
               <Sparkles size={32} className="text-white" />
             </div>
             <h3 className="text-white font-bold text-xl">SpectraScope</h3>
-            <p className="text-slate-500 text-sm mt-1">Version 0.1.0</p>
+            <p className="text-slate-500 text-sm mt-1">Version {APP_VERSION}</p>
             <p className="text-slate-600 text-xs mt-4">
               AI-Powered Investment Analysis
             </p>
@@ -476,32 +454,6 @@ const Section = memo(function Section({
       </div>
       <div className="space-y-3">{children}</div>
     </div>
-  );
-});
-
-interface ProviderButtonProps {
-  provider: AiProvider;
-  label: string;
-  isActive: boolean;
-  onClick: () => void;
-}
-
-const ProviderButton = memo(function ProviderButton({
-  label,
-  isActive,
-  onClick,
-}: ProviderButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 px-4 py-3 rounded-xl font-medium transition-all ${
-        isActive
-          ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30'
-          : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50'
-      }`}
-    >
-      {label}
-    </button>
   );
 });
 

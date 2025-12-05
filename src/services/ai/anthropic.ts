@@ -492,6 +492,13 @@ YOUR RESPONSIBILITIES:
 5. NOTE data limitations in your reasoning:
    If sources are missing, acknowledge what analysis is limited by.
 
+6. PROVIDE a "bottomLine" summary (5-10 sentences):
+   - Conversational, investor-friendly language
+   - Clear recommendation context (not advice)
+   - Key factors to watch
+   - What would change your view
+   - Time horizon considerations
+
 OUTPUT FORMAT: Valid JSON only, no markdown formatting.
 
 JSON Structure:
@@ -501,7 +508,8 @@ JSON Structure:
   "base": { "probability": number, "priceTarget": string, "timeframe": string, "title": string, "summary": string, "catalysts": string[], "risks": string[] },
   "confidence": number,
   "reasoning": string,
-  "sourcesUsed": string[]
+  "sourcesUsed": string[],
+  "bottomLine": string
 }`;
 
 /**
@@ -644,6 +652,7 @@ export async function synthesizeFromIntelligence(
       },
       confidence: Math.min(100, Math.max(0, parsed.confidence || 70)),
       reasoning: parsed.reasoning || 'Analysis synthesized from available intelligence sources.',
+      bottomLine: parsed.bottomLine || 'Review the scenarios above for a comprehensive view of potential outcomes.',
       tokenUsage: {
         input: inputTokens,
         output: outputTokens,
