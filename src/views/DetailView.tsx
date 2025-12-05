@@ -20,6 +20,7 @@ import { NewsPanel } from '@/components/analysis/NewsPanel';
 import { ScopeButton } from '@/components/analysis/ScopeButton';
 import { ScenarioCard } from '@/components/analysis/ScenarioCard';
 import { SourceAttribution } from '@/components/analysis/SourceAttribution';
+import { AIInsightsPanel } from '@/components/analysis/AIInsightsPanel';
 import {
   getQuote,
   getDailyData,
@@ -30,6 +31,7 @@ import { getStockNews, type NewsArticle } from '@/services/api/newsapi';
 import { synthesizeFromIntelligence } from '@/services/ai/anthropic';
 import { gatherIntelligence } from '@/services/intelligence';
 import type { StockQuote, HistoricalDataPoint, Scenario } from '@/types';
+import type { AnyIntelligenceReport } from '@/types/intelligence';
 
 // Company name lookup
 const COMPANY_NAMES: Record<string, string> = {
@@ -59,6 +61,7 @@ interface AnalysisResult {
   confidence: number;
   availableSources: string[];
   missingSources: string[];
+  intelligenceReports: AnyIntelligenceReport[];
   tokenUsage?: {
     input: number;
     output: number;
@@ -106,6 +109,7 @@ export const DetailView = memo(function DetailView({
         confidence: 75,
         availableSources: ['technical-analysis'],
         missingSources: [],
+        intelligenceReports: [],
       });
     }
   }, [symbol]);
@@ -183,6 +187,7 @@ export const DetailView = memo(function DetailView({
         confidence: result.confidence || 75,
         availableSources: intelligence.availableSources,
         missingSources: intelligence.missingSources,
+        intelligenceReports: intelligence.reports,
         tokenUsage: result.tokenUsage,
       };
 
@@ -309,6 +314,11 @@ export const DetailView = memo(function DetailView({
               availableSources={analysis.availableSources as any}
               missingSources={analysis.missingSources as any}
             />
+
+            {/* AI Insights from Grok & Gemini */}
+            {analysis.intelligenceReports.length > 0 && (
+              <AIInsightsPanel reports={analysis.intelligenceReports} />
+            )}
 
             <div className="space-y-3">
               <ScenarioCard type="bull" scenario={analysis.scenarios.bull} />

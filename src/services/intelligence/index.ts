@@ -52,8 +52,8 @@ export function getAvailableSources(): IntelligenceSource[] {
     sources.push('social-sentiment');
   }
 
-  // Web research - Perplexity
-  if (store.hasApiKey('perplexity')) {
+  // Web research - Gemini or Perplexity
+  if (store.hasApiKey('gemini') || store.hasApiKey('perplexity')) {
     sources.push('web-research');
   }
 
@@ -120,16 +120,16 @@ export async function gatherIntelligence(
     gatherPromises.push(Promise.resolve(null));
   }
 
-  // Social Sentiment
+  // Social Sentiment (Grok/X)
   if (availableSources.includes('social-sentiment')) {
-    gatherPromises.push(gatherSocialIntelligence(symbol));
+    gatherPromises.push(gatherSocialIntelligence(symbol, companyName));
   } else {
     gatherPromises.push(Promise.resolve(null));
   }
 
-  // Web Research
+  // Web Research (Gemini or Perplexity)
   if (availableSources.includes('web-research')) {
-    gatherPromises.push(gatherResearchIntelligence(symbol, companyName));
+    gatherPromises.push(gatherResearchIntelligence(symbol, companyName, currentPrice));
   } else {
     gatherPromises.push(Promise.resolve(null));
   }

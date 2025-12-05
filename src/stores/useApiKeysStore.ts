@@ -46,6 +46,7 @@ const keyPatterns: Partial<Record<keyof ApiKeys, RegExp>> = {
   openai: /^sk-[a-zA-Z0-9]{48,}$/,
   twitter: /^[a-zA-Z0-9]{50,}$/,
   grok: /^xai-[a-zA-Z0-9]{48,}$/,           // xAI API key pattern
+  gemini: /^[a-zA-Z0-9_-]{39}$/,            // Google Gemini API key pattern
   perplexity: /^pplx-[a-zA-Z0-9]{48,}$/,    // Perplexity API key pattern
   newsapi: /^[a-z0-9]{32}$/,                // NewsAPI key pattern
   mediastack: /^[a-z0-9]{32}$/,             // MediaStack API key pattern

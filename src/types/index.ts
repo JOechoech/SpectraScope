@@ -173,6 +173,7 @@ export interface ApiKeys {
   openai?: string;
   twitter?: string;
   grok?: string;        // xAI API for social sentiment
+  gemini?: string;      // Google Gemini for web research
   perplexity?: string;  // Perplexity API for web research
   newsapi?: string;     // NewsAPI for news headlines
   mediastack?: string;  // MediaStack for additional news coverage
