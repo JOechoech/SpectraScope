@@ -3,9 +3,11 @@
  *
  * Displays which sources are configured and provides a quality score
  * based on the number of active sources.
+ *
+ * IMPORTANT: Uses individual selectors for reactivity when keys change.
  */
 
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   BarChart3,
   Newspaper,
@@ -22,51 +24,62 @@ interface SourceConfig {
   id: IntelligenceSource;
   label: string;
   icon: typeof BarChart3;
-  requiredKey: string | null; // null means always available
+  requiredKeys: string[]; // Keys that enable this source (OR logic)
+  alwaysActive?: boolean;
 }
 
-const sources: SourceConfig[] = [
+const sourceConfigs: SourceConfig[] = [
   {
     id: 'technical-analysis',
     label: 'Technicals',
     icon: BarChart3,
-    requiredKey: null, // Always available (client-side)
+    requiredKeys: [],
+    alwaysActive: true, // Always available (client-side)
   },
   {
     id: 'news-sentiment',
     label: 'News',
     icon: Newspaper,
-    requiredKey: 'finnhub',
+    requiredKeys: ['newsapi', 'mediastack', 'finnhub'], // Any of these
   },
   {
     id: 'social-sentiment',
     label: 'Social',
     icon: MessageCircle,
-    requiredKey: 'grok',
+    requiredKeys: ['grok'],
   },
   {
     id: 'web-research',
     label: 'Research',
     icon: Search,
-    requiredKey: 'perplexity',
+    requiredKeys: ['gemini', 'perplexity'], // Either Gemini or Perplexity
   },
   {
     id: 'options-flow',
     label: 'Options',
     icon: TrendingUp,
-    requiredKey: 'polygon',
+    requiredKeys: ['polygon'],
   },
 ];
 
 export const ActiveSourcesCard = memo(function ActiveSourcesCard() {
+  // IMPORTANT: Subscribe to individual keys for reactivity!
+  // When any of these change, the component re-renders
+  const encodedKeys = useApiKeysStore((state) => state.encodedKeys);
   const { hasApiKey } = useApiKeysStore();
 
-  // Determine which sources are active
-  const activeCount = sources.filter(
-    (s) => s.requiredKey === null || hasApiKey(s.requiredKey as any)
-  ).length;
+  // Calculate which sources are active based on current keys
+  const sourceStates = useMemo(() => {
+    return sourceConfigs.map((source) => {
+      const isActive = source.alwaysActive ||
+        source.requiredKeys.some((key) => hasApiKey(key as any));
+      return { ...source, isActive };
+    });
+  }, [encodedKeys, hasApiKey]);
 
-  const totalSources = sources.length;
+  const activeCount = sourceStates.filter((s) => s.isActive).length;
+
+  const totalSources = sourceConfigs.length;
   const qualityPercent = Math.round((activeCount / totalSources) * 100);
 
   // Quality label
@@ -94,33 +107,30 @@ export const ActiveSourcesCard = memo(function ActiveSourcesCard() {
 
       {/* Source grid */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        {sources.map((source) => {
-          const isActive =
-            source.requiredKey === null ||
-            hasApiKey(source.requiredKey as any);
+        {sourceStates.map((source) => {
           const Icon = source.icon;
 
           return (
             <div
               key={source.id}
               className={`flex items-center gap-2 px-3 py-2 rounded-xl ${
-                isActive
+                source.isActive
                   ? 'bg-emerald-500/10 border border-emerald-500/20'
                   : 'bg-slate-800/30 border border-slate-700/30'
               }`}
             >
               <Icon
                 size={16}
-                className={isActive ? 'text-emerald-400' : 'text-slate-500'}
+                className={source.isActive ? 'text-emerald-400' : 'text-slate-500'}
               />
               <span
                 className={`text-sm ${
-                  isActive ? 'text-emerald-300' : 'text-slate-500'
+                  source.isActive ? 'text-emerald-300' : 'text-slate-500'
                 }`}
               >
                 {source.label}
               </span>
-              {isActive ? (
+              {source.isActive ? (
                 <Check size={14} className="ml-auto text-emerald-400" />
               ) : (
                 <X size={14} className="ml-auto text-slate-600" />

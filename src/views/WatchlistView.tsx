@@ -9,17 +9,13 @@
  */
 
 import { useState, useEffect, useMemo, memo, useCallback } from 'react';
-import { Search, RefreshCw } from 'lucide-react';
+import { Search, RefreshCw, Zap, Clock, Database } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { StockCard } from '@/components/watchlist/StockCard';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
-import {
-  getQuote,
-  getDailyData,
-  getMockQuote,
-  getMockDailyData,
-} from '@/services/api/alphavantage';
+import * as marketData from '@/services/marketData';
+import { getMockDailyData } from '@/services/api/polygon';
 import {
   calculateRSI,
   calculateMACD,
@@ -33,6 +29,7 @@ import {
 } from '@/utils/signals';
 import type { StockQuote } from '@/types';
 import type { AggregateScore } from '@/utils/signals';
+import type { DataSource } from '@/services/marketData';
 
 interface WatchlistViewProps {
   onSelectStock: (symbol: string) => void;
@@ -57,10 +54,13 @@ export const WatchlistView = memo(function WatchlistView({
   const [searchQuery, setSearchQuery] = useState('');
   const [stockData, setStockData] = useState<Record<string, StockData>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [dataSource, setDataSource] = useState<DataSource>('mock');
 
   const { items: watchlistItems, updateStock } = useWatchlistStore();
   const { getApiKey } = useApiKeysStore();
+  const polygonKey = getApiKey('polygon');
   const alphaVantageKey = getApiKey('alphavantage');
+  const hasMarketDataKey = !!(polygonKey || alphaVantageKey);
 
   // Get symbols from watchlist
   const symbols = useMemo(
@@ -81,37 +81,54 @@ export const WatchlistView = memo(function WatchlistView({
     });
   }, [symbols, searchQuery, watchlistItems]);
 
-  // Load stock data
+  // Load stock data using unified market data service (bulk when available)
   const loadStockData = useCallback(async () => {
+    if (symbols.length === 0) return;
+
     setIsRefreshing(true);
 
-    for (const symbol of symbols) {
-      try {
-        let quote: StockQuote;
+    try {
+      // Use bulk loading - automatically uses Polygon if available, else Alpha Vantage
+      const { quotes, source, errors } = await marketData.getBulkQuotes(symbols);
+      setDataSource(source);
+
+      if (errors.length > 0) {
+        console.warn('Some quotes failed:', errors);
+      }
+
+      // Process each quote
+      for (const symbol of symbols) {
+        const quote = quotes.get(symbol);
+
+        if (!quote) {
+          setStockData((prev) => ({
+            ...prev,
+            [symbol]: {
+              ...prev[symbol],
+              loading: false,
+              error: 'No data',
+            },
+          }));
+          continue;
+        }
+
+        // Get sparkline data (use mock for simplicity, real daily data can be slow)
         let prices: number[] = [];
-
-        if (alphaVantageKey) {
-          // Real API data
-          quote = await getQuote(symbol, alphaVantageKey);
-          const daily = await getDailyData(symbol, alphaVantageKey, 'compact');
-          prices = daily.slice(0, 20).map((d) => d.close);
-
-          // Rate limiting delay
-          await new Promise((r) => setTimeout(r, 1200));
-        } else {
-          // Mock data
-          quote = getMockQuote(symbol);
+        try {
+          const dailyResult = await marketData.getDailyData(symbol, 30);
+          prices = dailyResult.data.slice(0, 20).map((d) => d.close);
+        } catch {
           const mockDaily = getMockDailyData(symbol, 30);
           prices = mockDaily.slice(-20).map((d) => d.close);
         }
 
         // Calculate signal score if we have enough data
         let signalScore: AggregateScore | undefined;
-        if (prices.length >= 20) {
+        if (prices.length >= 14) {
           try {
             const rsi = calculateRSI(prices);
             const macd = calculateMACD(prices);
-            const sma20 = calculateSMA(prices, 20);
+            const sma20 = prices.length >= 20 ? calculateSMA(prices, 20) : prices[0];
 
             const signals = [
               getRSISignal(rsi),
@@ -143,8 +160,11 @@ export const WatchlistView = memo(function WatchlistView({
           changePercent: quote.changePercent,
           sparkline: prices,
         });
-      } catch (error) {
-        console.error(`Error loading ${symbol}:`, error);
+      }
+    } catch (error) {
+      console.error('Bulk loading failed:', error);
+      // Mark all as error
+      for (const symbol of symbols) {
         setStockData((prev) => ({
           ...prev,
           [symbol]: {
@@ -157,7 +177,7 @@ export const WatchlistView = memo(function WatchlistView({
     }
 
     setIsRefreshing(false);
-  }, [symbols, alphaVantageKey, updateStock]);
+  }, [symbols, updateStock]);
 
   // Initial load
   useEffect(() => {
@@ -207,15 +227,33 @@ export const WatchlistView = memo(function WatchlistView({
         </button>
       </div>
 
-      {/* API Key Warning */}
-      {!alphaVantageKey && (
-        <div className="mx-5 mb-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-          <p className="text-amber-400 text-sm">
-            Using mock data. Add Alpha Vantage API key in Settings for real
-            prices.
-          </p>
-        </div>
-      )}
+      {/* Data Source Indicator */}
+      <div className="mx-5 mb-3">
+        {dataSource === 'polygon' && (
+          <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+            <Zap size={16} className="text-emerald-400" />
+            <p className="text-emerald-400 text-sm">
+              Real-time data via Polygon.io
+            </p>
+          </div>
+        )}
+        {dataSource === 'alphavantage' && (
+          <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+            <Clock size={16} className="text-blue-400" />
+            <p className="text-blue-400 text-sm">
+              Delayed quotes via Alpha Vantage (rate limited)
+            </p>
+          </div>
+        )}
+        {dataSource === 'mock' && !hasMarketDataKey && (
+          <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+            <Database size={16} className="text-amber-400" />
+            <p className="text-amber-400 text-sm">
+              Using demo data. Add Polygon.io or Alpha Vantage API key in Settings for real prices.
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* Stock List */}
       <div className="px-5 py-2 space-y-3">
