@@ -1,0 +1,1 @@
+export { NewsCarousel } from './NewsCarousel';

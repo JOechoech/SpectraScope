@@ -13,6 +13,7 @@ import { Search, RefreshCw, Zap, Clock, AlertCircle, Loader2 } from 'lucide-reac
 import { Header } from '@/components/layout';
 import { StockCard } from '@/components/watchlist/StockCard';
 import { PortfolioSummary } from '@/components/portfolio/PortfolioSummary';
+import { NewsCarousel } from '@/components/news/NewsCarousel';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useStoreHydration } from '@/stores/useApiKeysStore';
 import * as marketData from '@/services/marketData';
@@ -197,11 +198,14 @@ export const WatchlistView = memo(function WatchlistView({
     <div className="min-h-screen bg-black pb-24">
       {/* Header */}
       <Header
-        title="Watchlist"
-        subtitle="Track your investments"
+        title="Home"
+        subtitle="Your portfolio at a glance"
         showSettings
         onSettings={onOpenSettings}
       />
+
+      {/* News Carousel */}
+      <NewsCarousel />
 
       {/* Search & Refresh */}
       <div className="px-5 py-3 flex gap-3">
