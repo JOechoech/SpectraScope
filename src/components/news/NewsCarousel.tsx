@@ -2,88 +2,131 @@
  * NewsCarousel - Horizontal scrolling news headlines
  *
  * Displays top business news in a carousel format.
- * Uses NewsAPI for headlines when API key is available.
+ * Tries Finnhub first (FREE), then falls back to NewsAPI.
  */
 
 import { useState, useEffect, memo } from 'react';
-import { Newspaper, ExternalLink, AlertCircle } from 'lucide-react';
+import { Newspaper, ExternalLink, TrendingUp } from 'lucide-react';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
-import { getTopBusinessNews, type NewsArticle } from '@/services/api/newsapi';
+import { getMarketNews, type FinnhubNews } from '@/services/api/finnhub';
+import { getTopBusinessNews } from '@/services/api/newsapi';
+
+interface DisplayNews {
+  id: string | number;
+  headline: string;
+  source: string;
+  url: string;
+  datetime: number;
+  image?: string;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+}
 
 // Mock news for when no API key is available
-const MOCK_NEWS: NewsArticle[] = [
+const MOCK_NEWS: DisplayNews[] = [
   {
-    title: 'Markets rally on positive economic data',
-    description: 'Stocks surge as employment numbers exceed expectations',
-    source: { name: 'Financial Times' },
+    id: 1,
+    headline: 'Markets rally on positive economic data',
+    source: 'Financial Times',
     url: '#',
-    publishedAt: new Date().toISOString(),
+    datetime: Date.now() / 1000 - 3600,
     sentiment: 'positive',
   },
   {
-    title: 'Tech sector leads market gains',
-    description: 'Technology stocks outperform broader market indices',
-    source: { name: 'Bloomberg' },
+    id: 2,
+    headline: 'Tech sector leads market gains',
+    source: 'Bloomberg',
     url: '#',
-    publishedAt: new Date().toISOString(),
+    datetime: Date.now() / 1000 - 7200,
     sentiment: 'positive',
   },
   {
-    title: 'Federal Reserve signals steady rates',
-    description: 'Central bank maintains current monetary policy stance',
-    source: { name: 'Reuters' },
+    id: 3,
+    headline: 'Federal Reserve signals steady rates',
+    source: 'Reuters',
     url: '#',
-    publishedAt: new Date().toISOString(),
+    datetime: Date.now() / 1000 - 14400,
     sentiment: 'neutral',
   },
   {
-    title: 'Q4 earnings season kicks off',
-    description: 'Major companies set to report quarterly results',
-    source: { name: 'CNBC' },
+    id: 4,
+    headline: 'Q4 earnings season kicks off',
+    source: 'CNBC',
     url: '#',
-    publishedAt: new Date().toISOString(),
+    datetime: Date.now() / 1000 - 21600,
     sentiment: 'neutral',
   },
 ];
 
 export const NewsCarousel = memo(function NewsCarousel() {
-  const [news, setNews] = useState<NewsArticle[]>([]);
+  const [news, setNews] = useState<DisplayNews[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<'finnhub' | 'newsapi' | 'mock'>('mock');
 
   const { getApiKey } = useApiKeysStore();
+  const finnhubKey = getApiKey('finnhub');
   const newsApiKey = getApiKey('newsapi');
 
   useEffect(() => {
     async function fetchNews() {
       setIsLoading(true);
-      setError(null);
 
-      if (!newsApiKey) {
-        // Use mock news when no API key
-        setNews(MOCK_NEWS);
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        const articles = await getTopBusinessNews(newsApiKey);
-        if (articles.length > 0) {
-          setNews(articles);
-        } else {
-          setNews(MOCK_NEWS);
+      // Try Finnhub first (FREE - 60 calls/min)
+      if (finnhubKey) {
+        try {
+          const articles = await getMarketNews(finnhubKey);
+          if (articles.length > 0) {
+            setNews(articles.map((a: FinnhubNews) => ({
+              id: a.id,
+              headline: a.headline,
+              source: a.source,
+              url: a.url,
+              datetime: a.datetime,
+              image: a.image,
+              sentiment: a.sentiment,
+            })));
+            setSource('finnhub');
+            setIsLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.error('Finnhub news error:', err);
         }
-      } catch (err) {
-        console.error('Failed to fetch news:', err);
-        setError('Failed to load news');
-        setNews(MOCK_NEWS);
-      } finally {
-        setIsLoading(false);
       }
+
+      // Fallback to NewsAPI
+      if (newsApiKey) {
+        try {
+          const articles = await getTopBusinessNews(newsApiKey);
+          if (articles.length > 0) {
+            setNews(articles.map((a) => ({
+              id: a.title,
+              headline: a.title,
+              source: a.source.name,
+              url: a.url,
+              datetime: new Date(a.publishedAt).getTime() / 1000,
+              sentiment: a.sentiment,
+            })));
+            setSource('newsapi');
+            setIsLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.error('NewsAPI error:', err);
+        }
+      }
+
+      // Use mock news
+      setNews(MOCK_NEWS);
+      setSource('mock');
+      setIsLoading(false);
     }
 
     fetchNews();
-  }, [newsApiKey]);
+
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchNews, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [finnhubKey, newsApiKey]);
 
   const getSentimentColor = (sentiment?: string) => {
     switch (sentiment) {
@@ -96,34 +139,49 @@ export const NewsCarousel = memo(function NewsCarousel() {
     }
   };
 
-  const formatTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return date.toLocaleDateString();
+  const formatTime = (timestamp: number) => {
+    const hours = Math.floor((Date.now() / 1000 - timestamp) / 3600);
+    if (hours < 1) return 'Just now';
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
   };
+
+  // No API keys - show hint
+  if (!finnhubKey && !newsApiKey && !isLoading) {
+    return (
+      <div className="px-5 py-4">
+        <div className="bg-slate-800/50 rounded-xl p-4 flex items-center gap-3">
+          <Newspaper className="w-5 h-5 text-slate-500" />
+          <div>
+            <p className="text-slate-400 text-sm">Add Finnhub API key for free market news</p>
+            <p className="text-slate-500 text-xs">finnhub.io - 60 free calls/minute</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
-      <div className="px-5 py-4">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="py-4">
+        <div className="flex items-center gap-2 px-5 mb-3">
           <Newspaper size={16} className="text-slate-500" />
           <h2 className="text-slate-400 font-medium text-sm">Market News</h2>
         </div>
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+        <div className="flex gap-3 overflow-x-auto px-5 pb-2 scrollbar-hide">
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="flex-shrink-0 w-64 h-24 bg-slate-800/30 rounded-xl animate-pulse"
+              className="flex-shrink-0 w-64 h-32 bg-slate-800/30 rounded-xl animate-pulse"
             />
           ))}
         </div>
       </div>
     );
+  }
+
+  if (news.length === 0) {
+    return null;
   }
 
   return (
@@ -134,46 +192,53 @@ export const NewsCarousel = memo(function NewsCarousel() {
           <Newspaper size={16} className="text-slate-500" />
           <h2 className="text-slate-400 font-medium text-sm">Market News</h2>
         </div>
-        {error && (
-          <div className="flex items-center gap-1 text-amber-400 text-xs">
-            <AlertCircle size={12} />
-            <span>Demo Mode</span>
-          </div>
-        )}
-        {!newsApiKey && (
-          <span className="text-slate-600 text-xs">Add NewsAPI key for live news</span>
-        )}
+        <span className="text-slate-600 text-xs">
+          {source === 'finnhub' ? 'via Finnhub' : source === 'newsapi' ? 'via NewsAPI' : 'Demo'}
+        </span>
       </div>
 
       {/* Carousel */}
       <div className="flex gap-3 overflow-x-auto px-5 pb-2 scrollbar-hide snap-x snap-mandatory">
-        {news.map((article, index) => (
+        {news.map((article) => (
           <a
-            key={`${article.title}-${index}`}
+            key={article.id}
             href={article.url !== '#' ? article.url : undefined}
             target="_blank"
             rel="noopener noreferrer"
-            className={`
-              flex-shrink-0 w-72 p-4 rounded-xl
-              border ${getSentimentColor(article.sentiment)}
-              snap-start
-              transition-all duration-200
-              ${article.url !== '#' ? 'hover:bg-slate-800/50 cursor-pointer' : ''}
-            `}
+            className="flex-shrink-0 w-64 bg-slate-800/70 rounded-xl overflow-hidden hover:bg-slate-800 transition-colors snap-start"
           >
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <span className="text-slate-500 text-xs">{article.source.name}</span>
-              <span className="text-slate-600 text-xs">{formatTime(article.publishedAt)}</span>
-            </div>
-            <h3 className="text-white text-sm font-medium line-clamp-2 mb-2">
-              {article.title}
-            </h3>
-            {article.url !== '#' && (
-              <div className="flex items-center gap-1 text-blue-400 text-xs">
-                <ExternalLink size={10} />
-                <span>Read more</span>
+            {/* Thumbnail */}
+            {article.image ? (
+              <div
+                className="h-24 bg-cover bg-center"
+                style={{ backgroundImage: `url(${article.image})` }}
+              />
+            ) : (
+              <div className="h-24 bg-gradient-to-br from-blue-900/50 to-purple-900/50 flex items-center justify-center">
+                <TrendingUp className="w-8 h-8 text-blue-400/50" />
               </div>
             )}
+
+            {/* Content */}
+            <div className={`p-3 border-t ${getSentimentColor(article.sentiment)}`}>
+              <h3 className="text-white text-sm font-medium line-clamp-2 leading-tight mb-2">
+                {article.headline}
+              </h3>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 text-xs truncate max-w-[100px]">
+                    {article.source}
+                  </span>
+                  <span className="text-slate-600 text-xs">•</span>
+                  <span className="text-slate-500 text-xs">
+                    {formatTime(article.datetime)}
+                  </span>
+                </div>
+                {article.url !== '#' && (
+                  <ExternalLink className="w-3 h-3 text-slate-500" />
+                )}
+              </div>
+            </div>
           </a>
         ))}
       </div>

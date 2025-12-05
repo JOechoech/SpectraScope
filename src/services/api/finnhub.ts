@@ -17,7 +17,56 @@ export interface FinnhubNews {
   source: string;
   url: string;
   datetime: number;
+  image?: string;
+  category?: string;
+  related?: string;
   sentiment?: 'positive' | 'neutral' | 'negative';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MARKET NEWS (General - FREE!)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Get general market news (FREE - 60 calls/min)
+ */
+export async function getMarketNews(
+  apiKey: string,
+  category: 'general' | 'forex' | 'crypto' | 'merger' = 'general'
+): Promise<FinnhubNews[]> {
+  const url = `${BASE_URL}/news?category=${category}&token=${apiKey}`;
+
+  try {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      console.warn('Finnhub market news error:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+
+    if (!Array.isArray(data)) {
+      console.warn('Finnhub returned unexpected data format');
+      return [];
+    }
+
+    return data.slice(0, 10).map((item: any) => ({
+      id: item.id,
+      headline: item.headline,
+      summary: item.summary,
+      source: item.source,
+      url: item.url,
+      datetime: item.datetime,
+      image: item.image,
+      category: item.category,
+      related: item.related,
+      sentiment: inferSentiment(item.headline),
+    }));
+  } catch (error) {
+    console.error('Finnhub market news error:', error);
+    return [];
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

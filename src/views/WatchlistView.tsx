@@ -8,14 +8,15 @@
  * - Pull to refresh functionality
  */
 
-import { useState, useEffect, useMemo, memo, useCallback } from 'react';
-import { Search, RefreshCw, Zap, Clock, AlertCircle, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo, memo, useCallback, useRef } from 'react';
+import { Search, RefreshCw, Zap, Clock, AlertCircle, Loader2, Briefcase, ChevronRight } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { StockCard } from '@/components/watchlist/StockCard';
 import { PortfolioSummary } from '@/components/portfolio/PortfolioSummary';
 import { NewsCarousel } from '@/components/news/NewsCarousel';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useStoreHydration } from '@/stores/useApiKeysStore';
+import { useQuoteCacheStore } from '@/stores/useQuoteCacheStore';
 import * as marketData from '@/services/marketData';
 import { getMockDailyData } from '@/services/api/polygon';
 import {
@@ -31,11 +32,11 @@ import {
 } from '@/utils/signals';
 import type { StockQuote } from '@/types';
 import type { AggregateScore } from '@/utils/signals';
-import type { DataSource } from '@/services/marketData';
 
 interface WatchlistViewProps {
   onSelectStock: (symbol: string) => void;
   onOpenSettings: () => void;
+  onOpenPortfolio?: () => void;
 }
 
 interface StockData {
@@ -52,17 +53,26 @@ interface StockData {
 export const WatchlistView = memo(function WatchlistView({
   onSelectStock,
   onOpenSettings,
+  onOpenPortfolio,
 }: WatchlistViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [stockData, setStockData] = useState<Record<string, StockData>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [dataSource, setDataSource] = useState<DataSource | null>(null); // null until loaded
+  const [isBackgroundRefresh, setIsBackgroundRefresh] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const hasFetchedRef = useRef(false);
 
   // Wait for store hydration before accessing API keys
   const isHydrated = useStoreHydration();
 
-  const { items: watchlistItems, updateStock } = useWatchlistStore();
+  // Use global quote cache
+  const cachedQuotes = useQuoteCacheStore((s) => s.quotes);
+  const cachedDataSource = useQuoteCacheStore((s) => s.dataSource);
+  const lastFetch = useQuoteCacheStore((s) => s.lastFetch);
+  const isStale = useQuoteCacheStore((s) => s.isStale);
+  const setQuotesCache = useQuoteCacheStore((s) => s.setQuotes);
+
+  const { items: watchlistItems, updateStock, holdings } = useWatchlistStore();
 
   // Get symbols from watchlist
   const symbols = useMemo(
@@ -83,16 +93,27 @@ export const WatchlistView = memo(function WatchlistView({
     });
   }, [symbols, searchQuery, watchlistItems]);
 
+  // Check if we have holdings
+  const hasHoldings = useMemo(() => {
+    return Object.values(holdings).some((h) => h.shares > 0);
+  }, [holdings]);
+
   // Load stock data using unified market data service (bulk when available)
-  const loadStockData = useCallback(async () => {
+  const loadStockData = useCallback(async (background = false) => {
     if (symbols.length === 0) return;
 
-    setIsRefreshing(true);
+    if (background) {
+      setIsBackgroundRefresh(true);
+    } else {
+      setIsRefreshing(true);
+    }
 
     try {
       // Use bulk loading - automatically uses Polygon if available, else Alpha Vantage
       const { quotes, source, errors } = await marketData.getBulkQuotes(symbols);
-      setDataSource(source);
+
+      // Store in global cache
+      setQuotesCache(quotes, source);
 
       if (errors.length > 0) {
         console.warn('Some quotes failed:', errors);
@@ -179,20 +200,58 @@ export const WatchlistView = memo(function WatchlistView({
     }
 
     setIsRefreshing(false);
+    setIsBackgroundRefresh(false);
     setInitialLoadDone(true);
-  }, [symbols, updateStock]);
+  }, [symbols, updateStock, setQuotesCache]);
 
-  // Initial load - wait for hydration before loading
+  // Initial load - check cache first, only fetch if stale or empty
   useEffect(() => {
     if (!isHydrated) return; // Wait for store to hydrate
+    if (hasFetchedRef.current) return; // Already fetched this session
+
+    const hasCache = Object.keys(cachedQuotes).length > 0;
+    const stale = isStale();
+
     if (symbols.length > 0) {
-      loadStockData();
+      if (!hasCache || stale) {
+        hasFetchedRef.current = true;
+        loadStockData(hasCache); // Background refresh if we have cache
+      } else {
+        // Use cached data
+        for (const symbol of symbols) {
+          const quote = cachedQuotes[symbol];
+          if (quote) {
+            // Get sparkline from mock for now
+            const mockDaily = getMockDailyData(symbol, 30);
+            const prices = mockDaily.slice(-20).map((d) => d.close);
+
+            setStockData((prev) => ({
+              ...prev,
+              [symbol]: {
+                quote,
+                sparkline: prices,
+                loading: false,
+              },
+            }));
+          }
+        }
+        setInitialLoadDone(true);
+      }
     } else {
-      // No symbols but hydrated - show proper source anyway
-      setDataSource(marketData.getCurrentProvider());
       setInitialLoadDone(true);
     }
-  }, [isHydrated, symbols.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isHydrated, symbols.length, cachedQuotes, isStale]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Background refresh every 60 seconds if using Polygon
+  useEffect(() => {
+    if (cachedDataSource !== 'polygon') return;
+
+    const interval = setInterval(() => {
+      loadStockData(true); // Background refresh
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [cachedDataSource, loadStockData]);
 
   return (
     <div className="min-h-screen bg-black pb-24">
@@ -223,7 +282,7 @@ export const WatchlistView = memo(function WatchlistView({
           />
         </div>
         <button
-          onClick={loadStockData}
+          onClick={() => loadStockData()}
           disabled={isRefreshing}
           className={`p-3 rounded-xl transition-all ${
             isRefreshing
@@ -238,6 +297,16 @@ export const WatchlistView = memo(function WatchlistView({
         </button>
       </div>
 
+      {/* Background Refresh Indicator */}
+      {isBackgroundRefresh && (
+        <div className="mx-5 mb-2">
+          <div className="text-xs text-blue-400 flex items-center gap-2">
+            <Loader2 size={12} className="animate-spin" />
+            Updating prices...
+          </div>
+        </div>
+      )}
+
       {/* Data Source Indicator */}
       <div className="mx-5 mb-3">
         {!isHydrated || !initialLoadDone ? (
@@ -245,25 +314,35 @@ export const WatchlistView = memo(function WatchlistView({
             <Loader2 size={16} className="text-slate-400 animate-spin" />
             <p className="text-slate-400 text-sm">Loading...</p>
           </div>
-        ) : dataSource === 'polygon' ? (
-          <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
-            <Zap size={16} className="text-emerald-400" />
-            <p className="text-emerald-400 text-sm">
-              Real-time via Polygon.io
-            </p>
+        ) : cachedDataSource === 'polygon' ? (
+          <div className="flex items-center justify-between p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+            <div className="flex items-center gap-2">
+              <Zap size={16} className="text-emerald-400" />
+              <p className="text-emerald-400 text-sm">Real-time via Polygon.io</p>
+            </div>
+            {lastFetch && (
+              <span className="text-emerald-400/60 text-xs">
+                {Math.round((Date.now() - lastFetch) / 1000)}s ago
+              </span>
+            )}
           </div>
-        ) : dataSource === 'alphavantage' ? (
-          <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-            <Clock size={16} className="text-amber-400" />
-            <p className="text-amber-400 text-sm">
-              Delayed quotes via Alpha Vantage (rate limited)
-            </p>
+        ) : cachedDataSource === 'alphavantage' ? (
+          <div className="flex items-center justify-between p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-amber-400" />
+              <p className="text-amber-400 text-sm">Delayed via Alpha Vantage</p>
+            </div>
+            {lastFetch && (
+              <span className="text-amber-400/60 text-xs">
+                {Math.round((Date.now() - lastFetch) / 1000)}s ago
+              </span>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-2 p-3 bg-slate-500/10 border border-slate-500/30 rounded-xl">
             <AlertCircle size={16} className="text-slate-400" />
             <p className="text-slate-400 text-sm">
-              Demo mode (no API key). Add API key in Settings for real data.
+              Demo mode - Add API key in Settings
             </p>
           </div>
         )}
@@ -316,6 +395,25 @@ export const WatchlistView = memo(function WatchlistView({
               Try a different search term
             </p>
           </div>
+        )}
+
+        {/* My Portfolio Button */}
+        {onOpenPortfolio && symbols.length > 0 && (
+          <button
+            onClick={onOpenPortfolio}
+            className="w-full mt-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white rounded-xl p-4 flex items-center gap-3 transition-all"
+          >
+            <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+              <Briefcase className="w-5 h-5 text-blue-400" />
+            </div>
+            <div className="text-left flex-1">
+              <div className="font-semibold">My Portfolio</div>
+              <div className="text-sm text-slate-400">
+                {hasHoldings ? 'View holdings & performance' : 'Track your shares'}
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-400" />
+          </button>
         )}
       </div>
     </div>
