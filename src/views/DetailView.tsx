@@ -15,12 +15,14 @@ import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useAnalysisStore } from '@/stores/useAnalysisStore';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { PriceChart } from '@/components/charts/PriceChart';
+import { ScenarioChart } from '@/components/charts/ScenarioChart';
 import { TechnicalSignalsPanel } from '@/components/analysis/TechnicalSignalsPanel';
 import { NewsPanel } from '@/components/analysis/NewsPanel';
 import { ScopeButton } from '@/components/analysis/ScopeButton';
 import { ScenarioCard } from '@/components/analysis/ScenarioCard';
 import { SourceAttribution } from '@/components/analysis/SourceAttribution';
 import { AIInsightsPanel } from '@/components/analysis/AIInsightsPanel';
+import { HoldingsInput } from '@/components/portfolio/HoldingsInput';
 import {
   getQuote,
   getDailyData,
@@ -269,6 +271,11 @@ export const DetailView = memo(function DetailView({
           />
         )}
 
+        {/* Holdings Input */}
+        {quote && (
+          <HoldingsInput symbol={symbol} currentPrice={quote.price} />
+        )}
+
         {/* Technical Signals (Auto-loads) */}
         {quote && priceData.length > 0 && (
           <TechnicalSignalsPanel
@@ -318,6 +325,15 @@ export const DetailView = memo(function DetailView({
             {/* AI Insights from Grok & Gemini */}
             {analysis.intelligenceReports.length > 0 && (
               <AIInsightsPanel reports={analysis.intelligenceReports} />
+            )}
+
+            {/* Scenario Projection Chart */}
+            {quote && (
+              <ScenarioChart
+                currentPrice={quote.price}
+                scenarios={analysis.scenarios}
+                timeframeMonths={6}
+              />
             )}
 
             <div className="space-y-3">

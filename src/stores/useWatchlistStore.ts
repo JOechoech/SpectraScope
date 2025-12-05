@@ -2,18 +2,33 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { WatchlistItem, Stock, AnalysisResult } from '@/types';
 
+// Portfolio holding for a stock
+export interface Holding {
+  symbol: string;
+  shares: number;
+  avgCost?: number; // Average cost basis
+  addedAt: string;
+}
+
 interface WatchlistState {
   items: WatchlistItem[];
   selectedSymbol: string | null;
   analysisHistory: Record<string, AnalysisResult[]>;
-  
+  holdings: Record<string, Holding>; // Portfolio holdings
+
   // Actions
   addStock: (stock: Stock) => void;
   removeStock: (symbol: string) => void;
   updateStock: (symbol: string, updates: Partial<WatchlistItem>) => void;
   selectStock: (symbol: string | null) => void;
   reorderStocks: (fromIndex: number, toIndex: number) => void;
-  
+
+  // Holdings
+  setShares: (symbol: string, shares: number) => void;
+  setAvgCost: (symbol: string, avgCost: number) => void;
+  getHolding: (symbol: string) => Holding | null;
+  getTotalShares: (symbol: string) => number;
+
   // Analysis
   addAnalysis: (symbol: string, analysis: AnalysisResult) => void;
   getLatestAnalysis: (symbol: string) => AnalysisResult | undefined;
@@ -82,6 +97,7 @@ export const useWatchlistStore = create<WatchlistState>()(
       ],
       selectedSymbol: null,
       analysisHistory: {},
+      holdings: {},
 
       addStock: (stock) =>
         set((state) => {
@@ -121,6 +137,40 @@ export const useWatchlistStore = create<WatchlistState>()(
           items.splice(toIndex, 0, removed);
           return { items };
         }),
+
+      // Holdings management
+      setShares: (symbol, shares) =>
+        set((state) => ({
+          holdings: {
+            ...state.holdings,
+            [symbol]: {
+              ...state.holdings[symbol],
+              symbol,
+              shares: Math.max(0, shares),
+              addedAt:
+                state.holdings[symbol]?.addedAt || new Date().toISOString(),
+            },
+          },
+        })),
+
+      setAvgCost: (symbol, avgCost) =>
+        set((state) => ({
+          holdings: {
+            ...state.holdings,
+            [symbol]: {
+              ...state.holdings[symbol],
+              symbol,
+              avgCost,
+              shares: state.holdings[symbol]?.shares || 0,
+              addedAt:
+                state.holdings[symbol]?.addedAt || new Date().toISOString(),
+            },
+          },
+        })),
+
+      getHolding: (symbol) => get().holdings[symbol] || null,
+
+      getTotalShares: (symbol) => get().holdings[symbol]?.shares || 0,
 
       addAnalysis: (symbol, analysis) =>
         set((state) => {
@@ -163,6 +213,7 @@ export const useWatchlistStore = create<WatchlistState>()(
       partialize: (state) => ({
         items: state.items,
         analysisHistory: state.analysisHistory,
+        holdings: state.holdings,
       }),
     }
   )
