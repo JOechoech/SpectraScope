@@ -1,17 +1,11 @@
 /**
- * MarketStatusBar - Shows current market session status
- *
- * Displays:
- * - Current session (Pre-Market, Open, After Hours, Closed)
- * - Time until next session change
- * - Last data update time
+ * MarketStatusBar - Compact market session status indicator
  */
 
 import { useState, useEffect, memo } from 'react';
 import { getMarketStatus, type MarketStatus } from '@/utils/marketStatus';
 
 interface MarketStatusBarProps {
-  /** Last time data was refreshed */
   lastUpdated?: Date | null;
 }
 
@@ -20,8 +14,10 @@ export const MarketStatusBar = memo(function MarketStatusBar({
 }: MarketStatusBarProps) {
   const [status, setStatus] = useState<MarketStatus>(getMarketStatus());
 
-  // Update every minute
+  // Update immediately on mount and then every minute
   useEffect(() => {
+    setStatus(getMarketStatus());
+
     const interval = setInterval(() => {
       setStatus(getMarketStatus());
     }, 60000);
@@ -46,11 +42,11 @@ export const MarketStatusBar = memo(function MarketStatusBar({
   };
 
   return (
-    <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-t border-slate-800">
+    <div className="flex items-center justify-between px-4 py-1.5 bg-black/90 border-t border-slate-800/50">
       {/* Market Status */}
       <div className="flex items-center gap-2">
         <div
-          className={`w-2 h-2 rounded-full ${
+          className={`w-1.5 h-1.5 rounded-full ${
             status.session === 'open'
               ? 'bg-emerald-400 animate-pulse'
               : status.session === 'pre-market'
@@ -60,25 +56,20 @@ export const MarketStatusBar = memo(function MarketStatusBar({
                   : 'bg-slate-500'
           }`}
         />
-        <span className={`text-sm font-medium ${status.color}`}>
+        <span className={`text-xs font-medium ${status.color}`}>
           {status.label}
         </span>
-        {status.nextEvent && status.session !== 'open' && (
-          <span className="text-slate-500 text-sm">
-            {status.nextEvent.label} in {status.nextEvent.countdown}
-          </span>
-        )}
-        {status.nextEvent && status.session === 'open' && (
-          <span className="text-slate-500 text-sm">
-            {status.nextEvent.label} in {status.nextEvent.countdown}
+        {status.nextEvent && (
+          <span className="text-slate-500 text-xs">
+            · {status.nextEvent.label} in {status.nextEvent.countdown}
           </span>
         )}
       </div>
 
       {/* Last Updated */}
       {lastUpdated && (
-        <span className="text-slate-500 text-sm">
-          Updated {formatLastUpdated(lastUpdated)}
+        <span className="text-slate-500 text-xs">
+          {formatLastUpdated(lastUpdated)}
         </span>
       )}
     </div>

@@ -60,6 +60,11 @@ export default function App() {
         ::-webkit-scrollbar-thumb:hover {
           background: #475569;
         }
+
+        /* Safe area for bottom nav */
+        .safe-bottom {
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
       `}</style>
 
       {/* Views */}
@@ -85,15 +90,13 @@ export default function App() {
         />
       )}
 
-      {/* Market Status Bar - show on main views, not settings */}
-      {view !== 'settings' && (
-        <div className="fixed bottom-16 left-0 right-0 z-40">
-          <MarketStatusBar />
+      {/* Fixed Bottom - Status + Nav combined */}
+      {view !== 'detail' && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-black">
+          {view !== 'settings' && <MarketStatusBar />}
+          <Navigation currentView={view} onNavigate={handleNavigate} />
         </div>
       )}
-
-      {/* Bottom Navigation */}
-      <Navigation currentView={view} onNavigate={handleNavigate} />
     </div>
   );
 }
