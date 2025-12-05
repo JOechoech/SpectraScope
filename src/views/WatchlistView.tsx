@@ -9,11 +9,12 @@
  */
 
 import { useState, useEffect, useMemo, memo, useCallback } from 'react';
-import { Search, RefreshCw, Zap, Clock, AlertCircle } from 'lucide-react';
+import { Search, RefreshCw, Zap, Clock, AlertCircle, Loader2 } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { StockCard } from '@/components/watchlist/StockCard';
 import { PortfolioSummary } from '@/components/portfolio/PortfolioSummary';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
+import { useStoreHydration } from '@/stores/useApiKeysStore';
 import * as marketData from '@/services/marketData';
 import { getMockDailyData } from '@/services/api/polygon';
 import {
@@ -54,7 +55,11 @@ export const WatchlistView = memo(function WatchlistView({
   const [searchQuery, setSearchQuery] = useState('');
   const [stockData, setStockData] = useState<Record<string, StockData>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [dataSource, setDataSource] = useState<DataSource>('mock');
+  const [dataSource, setDataSource] = useState<DataSource | null>(null); // null until loaded
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+  // Wait for store hydration before accessing API keys
+  const isHydrated = useStoreHydration();
 
   const { items: watchlistItems, updateStock } = useWatchlistStore();
 
@@ -173,14 +178,20 @@ export const WatchlistView = memo(function WatchlistView({
     }
 
     setIsRefreshing(false);
+    setInitialLoadDone(true);
   }, [symbols, updateStock]);
 
-  // Initial load
+  // Initial load - wait for hydration before loading
   useEffect(() => {
+    if (!isHydrated) return; // Wait for store to hydrate
     if (symbols.length > 0) {
       loadStockData();
+    } else {
+      // No symbols but hydrated - show proper source anyway
+      setDataSource(marketData.getCurrentProvider());
+      setInitialLoadDone(true);
     }
-  }, [symbols.length]); // Only reload when symbols change
+  }, [isHydrated, symbols.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen bg-black pb-24">
@@ -225,7 +236,12 @@ export const WatchlistView = memo(function WatchlistView({
 
       {/* Data Source Indicator */}
       <div className="mx-5 mb-3">
-        {dataSource === 'polygon' ? (
+        {!isHydrated || !initialLoadDone ? (
+          <div className="flex items-center gap-2 p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl">
+            <Loader2 size={16} className="text-slate-400 animate-spin" />
+            <p className="text-slate-400 text-sm">Loading...</p>
+          </div>
+        ) : dataSource === 'polygon' ? (
           <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
             <Zap size={16} className="text-emerald-400" />
             <p className="text-emerald-400 text-sm">

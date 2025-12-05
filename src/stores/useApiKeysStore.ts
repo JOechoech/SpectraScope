@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useState, useEffect } from 'react';
 import type { ApiKeys, AiProvider } from '@/types';
 
 // Simple obfuscation for localStorage (not encryption, but better than plaintext)
@@ -51,6 +52,21 @@ const keyPatterns: Partial<Record<keyof ApiKeys, RegExp>> = {
   newsapi: /^[a-z0-9]{32}$/,                // NewsAPI key pattern
   mediastack: /^[a-z0-9]{32}$/,             // MediaStack API key pattern
 };
+
+// Track hydration status
+let isHydrated = false;
+const hydrationListeners = new Set<() => void>();
+
+export const onHydrationComplete = (callback: () => void) => {
+  if (isHydrated) {
+    callback();
+    return () => {};
+  }
+  hydrationListeners.add(callback);
+  return () => hydrationListeners.delete(callback);
+};
+
+export const getIsHydrated = () => isHydrated;
 
 export const useApiKeysStore = create<ApiKeysState>()(
   persist(
@@ -105,6 +121,13 @@ export const useApiKeysStore = create<ApiKeysState>()(
         encodedKeys: state.encodedKeys,
         defaultAiProvider: state.defaultAiProvider,
       }),
+      onRehydrateStorage: () => {
+        return () => {
+          isHydrated = true;
+          hydrationListeners.forEach((cb) => cb());
+          hydrationListeners.clear();
+        };
+      },
     }
   )
 );
@@ -112,12 +135,12 @@ export const useApiKeysStore = create<ApiKeysState>()(
 // Hook for checking if all required keys are configured
 export const useRequiredKeys = () => {
   const { hasApiKey, defaultAiProvider } = useApiKeysStore();
-  
+
   const hasFinancialKey = hasApiKey('alphavantage') || hasApiKey('polygon');
-  const hasAiKey = 
+  const hasAiKey =
     (defaultAiProvider === 'anthropic' && hasApiKey('anthropic')) ||
     (defaultAiProvider === 'openai' && hasApiKey('openai'));
-  
+
   return {
     hasFinancialKey,
     hasAiKey,
@@ -127,4 +150,26 @@ export const useRequiredKeys = () => {
       ai: !hasAiKey,
     },
   };
+};
+
+// Hook to wait for store hydration
+export const useStoreHydration = () => {
+  const [hydrated, setHydrated] = useState(getIsHydrated());
+
+  useEffect(() => {
+    if (hydrated) return;
+
+    const unsubscribe = onHydrationComplete(() => {
+      setHydrated(true);
+    });
+
+    // Double-check in case hydration completed between render and effect
+    if (getIsHydrated()) {
+      setHydrated(true);
+    }
+
+    return unsubscribe;
+  }, [hydrated]);
+
+  return hydrated;
 };
