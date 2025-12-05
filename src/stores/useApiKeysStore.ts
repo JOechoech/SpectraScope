@@ -38,7 +38,7 @@ interface ApiKeysState {
 }
 
 // Validation patterns for different API keys
-const keyPatterns: Record<keyof ApiKeys, RegExp> = {
+const keyPatterns: Partial<Record<keyof ApiKeys, RegExp>> = {
   alphavantage: /^[A-Z0-9]{16}$/,
   polygon: /^[a-zA-Z0-9_]{32}$/,
   finnhub: /^[a-z0-9]{20,}$/,
@@ -47,6 +47,8 @@ const keyPatterns: Record<keyof ApiKeys, RegExp> = {
   twitter: /^[a-zA-Z0-9]{50,}$/,
   grok: /^xai-[a-zA-Z0-9]{48,}$/,           // xAI API key pattern
   perplexity: /^pplx-[a-zA-Z0-9]{48,}$/,    // Perplexity API key pattern
+  newsapi: /^[a-z0-9]{32}$/,                // NewsAPI key pattern
+  mediastack: /^[a-z0-9]{32}$/,             // MediaStack API key pattern
 };
 
 export const useApiKeysStore = create<ApiKeysState>()(

@@ -16,6 +16,7 @@ import { useAnalysisStore } from '@/stores/useAnalysisStore';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { PriceChart } from '@/components/charts/PriceChart';
 import { TechnicalSignalsPanel } from '@/components/analysis/TechnicalSignalsPanel';
+import { NewsPanel } from '@/components/analysis/NewsPanel';
 import { ScopeButton } from '@/components/analysis/ScopeButton';
 import { ScenarioCard } from '@/components/analysis/ScenarioCard';
 import { SourceAttribution } from '@/components/analysis/SourceAttribution';
@@ -25,6 +26,7 @@ import {
   getMockQuote,
   getMockDailyData,
 } from '@/services/api/alphavantage';
+import { getStockNews, type NewsArticle } from '@/services/api/newsapi';
 import { synthesizeFromIntelligence } from '@/services/ai/anthropic';
 import { gatherIntelligence } from '@/services/intelligence';
 import type { StockQuote, HistoricalDataPoint, Scenario } from '@/types';
@@ -74,11 +76,14 @@ export const DetailView = memo(function DetailView({
 
   const alphaVantageKey = getApiKey('alphavantage');
   const anthropicKey = getApiKey('anthropic');
+  const newsApiKey = getApiKey('newsapi');
 
   const [quote, setQuote] = useState<StockQuote | null>(null);
   const [priceData, setPriceData] = useState<HistoricalDataPoint[]>([]);
+  const [news, setNews] = useState<NewsArticle[]>([]);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isLoadingPrice, setIsLoadingPrice] = useState(true);
+  const [isLoadingNews, setIsLoadingNews] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,9 +92,10 @@ export const DetailView = memo(function DetailView({
     COMPANY_NAMES[symbol] ||
     symbol;
 
-  // Load price data on mount
+  // Load price data and news on mount
   useEffect(() => {
     loadPriceData();
+    loadNews();
 
     // Check for existing analysis
     const existing = getLatestAnalysis(symbol);
@@ -131,6 +137,24 @@ export const DetailView = memo(function DetailView({
       setIsLoadingPrice(false);
     }
   }, [symbol, alphaVantageKey]);
+
+  const loadNews = useCallback(async () => {
+    if (!newsApiKey) {
+      setNews([]);
+      return;
+    }
+
+    setIsLoadingNews(true);
+    try {
+      const articles = await getStockNews(symbol, companyName, newsApiKey);
+      setNews(articles);
+    } catch (err) {
+      console.error('Failed to load news:', err);
+      setNews([]);
+    } finally {
+      setIsLoadingNews(false);
+    }
+  }, [symbol, companyName, newsApiKey]);
 
   const runAnalysis = useCallback(async () => {
     if (!anthropicKey || !quote) return;
@@ -246,6 +270,11 @@ export const DetailView = memo(function DetailView({
             priceData={priceData}
             currentPrice={quote.price}
           />
+        )}
+
+        {/* News Panel */}
+        {newsApiKey && (
+          <NewsPanel articles={news} isLoading={isLoadingNews} />
         )}
 
         {/* Scope Button */}

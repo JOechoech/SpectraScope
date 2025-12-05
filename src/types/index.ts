@@ -174,6 +174,8 @@ export interface ApiKeys {
   twitter?: string;
   grok?: string;        // xAI API for social sentiment
   perplexity?: string;  // Perplexity API for web research
+  newsapi?: string;     // NewsAPI for news headlines
+  mediastack?: string;  // MediaStack for additional news coverage
 }
 
 export interface UserSettings {

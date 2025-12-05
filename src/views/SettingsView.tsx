@@ -83,12 +83,21 @@ const marketDataApis: ApiKeyConfig[] = [
 
 const intelligenceApis: ApiKeyConfig[] = [
   {
-    key: 'finnhub',
-    label: 'Finnhub',
-    description: 'News headlines & market sentiment',
+    key: 'newsapi',
+    label: 'NewsAPI',
+    description: 'News headlines & sentiment analysis',
     icon: Newspaper,
-    placeholder: 'Your Finnhub key',
-    freeLink: 'https://finnhub.io/register',
+    placeholder: 'Your 32-character key',
+    freeLink: 'https://newsapi.org/register',
+  },
+  {
+    key: 'mediastack',
+    label: 'MediaStack',
+    description: 'Additional news coverage',
+    icon: Newspaper,
+    placeholder: 'Your MediaStack key',
+    tier: 'free',
+    freeLink: 'https://mediastack.com/signup',
   },
   {
     key: 'grok',

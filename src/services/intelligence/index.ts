@@ -42,8 +42,8 @@ export function getAvailableSources(): IntelligenceSource[] {
   // Technical analysis is always available (client-side)
   sources.push('technical-analysis');
 
-  // News sentiment - Finnhub
-  if (store.hasApiKey('finnhub')) {
+  // News sentiment - NewsAPI
+  if (store.hasApiKey('newsapi')) {
     sources.push('news-sentiment');
   }
 
