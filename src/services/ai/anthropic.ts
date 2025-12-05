@@ -234,7 +234,7 @@ function determineSentiment(news: NewsItem[]): 'positive' | 'neutral' | 'negativ
     }
   });
   
-  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const avg = scores.reduce<number>((a, b) => a + b, 0) / scores.length;
   
   if (avg > 0.3) return 'positive';
   if (avg < -0.3) return 'negative';
