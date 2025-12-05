@@ -329,6 +329,46 @@ export function calculateOptionsMetrics(options: PolygonOption[]): OptionsMetric
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// TICKER SEARCH
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface SearchResult {
+  symbol: string;
+  name: string;
+  type: string;
+}
+
+/**
+ * Search for tickers by name or symbol
+ */
+export async function searchTickers(
+  query: string,
+  apiKey: string
+): Promise<SearchResult[]> {
+  try {
+    const response = await fetch(
+      `${POLYGON_BASE}/v3/reference/tickers?search=${encodeURIComponent(query)}&active=true&limit=15&apiKey=${apiKey}`
+    );
+
+    if (!response.ok) {
+      console.error('Polygon search error:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+
+    return (data.results || []).map((t: any) => ({
+      symbol: t.ticker,
+      name: t.name,
+      type: t.type || 'Stock',
+    }));
+  } catch (error) {
+    console.error('Polygon search failed:', error);
+    return [];
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MOCK DATA (Fallback when no API key)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -423,6 +463,7 @@ export default {
   getDailyData,
   getOptionsChain,
   calculateOptionsMetrics,
+  searchTickers,
   getMockQuote,
   getMockBulkSnapshot,
   getMockDailyData,

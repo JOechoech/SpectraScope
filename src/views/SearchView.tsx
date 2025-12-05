@@ -1,13 +1,26 @@
-import { useState, useMemo, memo, useCallback } from 'react';
-import { Search, TrendingUp, History, Sparkles, X } from 'lucide-react';
-import { Header } from '@/components/layout';
+/**
+ * SearchView - Stock symbol search with API integration
+ *
+ * Features:
+ * - Real-time search via Polygon or Alpha Vantage
+ * - Debounced queries for performance
+ * - Popular stocks fallback
+ * - Add to watchlist support
+ */
 
-interface Stock {
+import { useState, useCallback, useEffect, memo } from 'react';
+import { Search, X, Loader2, Plus, Check, TrendingUp, Sparkles } from 'lucide-react';
+import { Header } from '@/components/layout';
+import { useApiKeysStore } from '@/stores/useApiKeysStore';
+import { useWatchlistStore } from '@/stores/useWatchlistStore';
+import { searchTickers } from '@/services/api/polygon';
+import { searchSymbols } from '@/services/api/alphavantage';
+import { debounce } from '@/utils/debounce';
+
+interface SearchResult {
   symbol: string;
   name: string;
-  price: number;
-  change: number;
-  changePercent: number;
+  type: string;
 }
 
 interface SearchViewProps {
@@ -15,49 +28,133 @@ interface SearchViewProps {
   onBack: () => void;
 }
 
-// Popular stocks for suggestions
-const popularStocks: Stock[] = [
-  { symbol: 'AAPL', name: 'Apple Inc.', price: 189.84, change: 2.35, changePercent: 1.25 },
-  { symbol: 'MSFT', name: 'Microsoft Corporation', price: 378.91, change: 4.21, changePercent: 1.12 },
-  { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 141.80, change: 1.92, changePercent: 1.37 },
-  { symbol: 'AMZN', name: 'Amazon.com Inc.', price: 178.25, change: -1.45, changePercent: -0.81 },
-  { symbol: 'NVDA', name: 'NVIDIA Corporation', price: 495.22, change: 12.34, changePercent: 2.56 },
-  { symbol: 'META', name: 'Meta Platforms Inc.', price: 505.35, change: 8.76, changePercent: 1.76 },
-  { symbol: 'TSLA', name: 'Tesla Inc.', price: 248.50, change: -3.25, changePercent: -1.29 },
-  { symbol: 'BRK.B', name: 'Berkshire Hathaway', price: 362.45, change: 1.23, changePercent: 0.34 },
+// Popular stocks for suggestions when no API key or no query
+const POPULAR_STOCKS: SearchResult[] = [
+  { symbol: 'AAPL', name: 'Apple Inc.', type: 'Stock' },
+  { symbol: 'MSFT', name: 'Microsoft Corporation', type: 'Stock' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', type: 'Stock' },
+  { symbol: 'AMZN', name: 'Amazon.com Inc.', type: 'Stock' },
+  { symbol: 'NVDA', name: 'NVIDIA Corporation', type: 'Stock' },
+  { symbol: 'TSLA', name: 'Tesla Inc.', type: 'Stock' },
+  { symbol: 'META', name: 'Meta Platforms Inc.', type: 'Stock' },
+  { symbol: 'AMD', name: 'Advanced Micro Devices', type: 'Stock' },
+  { symbol: 'NFLX', name: 'Netflix Inc.', type: 'Stock' },
+  { symbol: 'DIS', name: 'The Walt Disney Company', type: 'Stock' },
 ];
 
-/**
- * SearchView - Stock symbol search with suggestions
- * Provides quick access to popular stocks and search history
- */
 export const SearchView = memo(function SearchView({
   onSelectStock,
   onBack,
 }: SearchViewProps) {
   const [query, setQuery] = useState('');
-  const [recentSearches] = useState<string[]>(['AAPL', 'TSLA', 'NVDA']);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredStocks = useMemo(() => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
-    return popularStocks.filter(
-      (s) =>
-        s.symbol.toLowerCase().includes(q) ||
-        s.name.toLowerCase().includes(q)
-    );
-  }, [query]);
+  const { getApiKey } = useApiKeysStore();
+  const polygonKey = getApiKey('polygon');
+  const alphaVantageKey = getApiKey('alphavantage');
+  const hasApiKey = !!(polygonKey || alphaVantageKey);
+
+  const { items: watchlistItems, addStock } = useWatchlistStore();
+
+  // Check if symbol is already in watchlist
+  const isInWatchlist = useCallback(
+    (symbol: string) => watchlistItems.some((item) => item.symbol === symbol),
+    [watchlistItems]
+  );
+
+  // Debounced search function
+  const performSearch = useCallback(
+    debounce(async (searchQuery: string) => {
+      if (searchQuery.length < 1) {
+        setResults([]);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        let searchResults: SearchResult[] = [];
+
+        // Try Polygon first (faster, no rate limit)
+        if (polygonKey) {
+          console.log('Searching with Polygon.io...');
+          searchResults = await searchTickers(searchQuery, polygonKey);
+        }
+        // Fallback to Alpha Vantage
+        else if (alphaVantageKey) {
+          console.log('Searching with Alpha Vantage...');
+          const avResults = await searchSymbols(searchQuery, alphaVantageKey);
+          searchResults = avResults.map((r) => ({
+            symbol: r.symbol,
+            name: r.name,
+            type: r.type,
+          }));
+        }
+        // No API key - filter popular stocks
+        else {
+          searchResults = POPULAR_STOCKS.filter(
+            (s) =>
+              s.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              s.name.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+        }
+
+        setResults(searchResults);
+      } catch (err: any) {
+        console.error('Search error:', err);
+        setError('Search failed. Please try again.');
+        setResults([]);
+      } finally {
+        setIsLoading(false);
+      }
+    }, 300),
+    [polygonKey, alphaVantageKey]
+  );
+
+  // Trigger search when query changes
+  useEffect(() => {
+    if (query.trim()) {
+      setIsLoading(true);
+      performSearch(query);
+    } else {
+      setResults([]);
+      setIsLoading(false);
+    }
+  }, [query, performSearch]);
 
   const handleClearSearch = useCallback(() => {
     setQuery('');
+    setResults([]);
+    setError(null);
   }, []);
 
-  const handleQuickSelect = useCallback((symbol: string) => {
-    onSelectStock(symbol);
-  }, [onSelectStock]);
+  const handleSelectStock = useCallback(
+    (symbol: string) => {
+      onSelectStock(symbol);
+    },
+    [onSelectStock]
+  );
+
+  const handleAddToWatchlist = useCallback(
+    (result: SearchResult, e: React.MouseEvent) => {
+      e.stopPropagation();
+      addStock({
+        symbol: result.symbol,
+        name: result.name,
+        price: 0, // Will be updated when data loads
+        change: 0,
+        changePercent: 0,
+      });
+    },
+    [addStock]
+  );
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-black flex flex-col">
       {/* Header */}
       <Header
         title="Search"
@@ -75,7 +172,7 @@ export const SearchView = memo(function SearchView({
           />
           <input
             type="text"
-            placeholder="Search symbols or company names..."
+            placeholder="Search stocks..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             autoFocus
@@ -90,176 +187,154 @@ export const SearchView = memo(function SearchView({
             </button>
           )}
         </div>
+
+        {/* API Status */}
+        {!hasApiKey && (
+          <p className="text-amber-400 text-sm mt-2">
+            Add API key in Settings to search all stocks
+          </p>
+        )}
       </div>
 
-      {/* Search Results */}
-      {query && filteredStocks.length > 0 && (
-        <div className="px-5 pb-4">
-          <div className="bg-slate-900/30 border border-slate-800/50 rounded-2xl overflow-hidden">
-            {filteredStocks.map((stock, index) => (
-              <SearchResultItem
-                key={stock.symbol}
-                stock={stock}
-                onSelect={() => onSelectStock(stock.symbol)}
-                isLast={index === filteredStocks.length - 1}
-              />
-            ))}
+      {/* Content Area */}
+      <div className="flex-1 overflow-y-auto pb-24">
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
           </div>
-        </div>
-      )}
+        )}
 
-      {/* No Results */}
-      {query && filteredStocks.length === 0 && (
-        <div className="px-5 pb-4">
-          <div className="bg-slate-900/20 border border-dashed border-slate-700/50 rounded-2xl p-8 text-center">
-            <Search size={32} className="mx-auto text-slate-600 mb-3" />
-            <p className="text-slate-400 font-medium">No results found</p>
-            <p className="text-slate-600 text-sm mt-1">
-              Try searching for a different symbol
-            </p>
+        {/* Error State */}
+        {error && !isLoading && (
+          <div className="px-5 py-4">
+            <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 text-center">
+              <p className="text-rose-400">{error}</p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Recent Searches */}
-      {!query && recentSearches.length > 0 && (
-        <div className="px-5 pb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <History size={16} className="text-slate-500" />
-            <h3 className="text-slate-400 font-medium text-sm">Recent Searches</h3>
+        {/* Search Results */}
+        {!isLoading && !error && results.length > 0 && (
+          <div className="px-5">
+            <div className="bg-slate-900/30 border border-slate-800/50 rounded-2xl overflow-hidden divide-y divide-slate-800/50">
+              {results.map((result) => (
+                <div
+                  key={result.symbol}
+                  onClick={() => handleSelectStock(result.symbol)}
+                  className="flex items-center justify-between p-4 hover:bg-slate-800/40 cursor-pointer transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-semibold">
+                        {result.symbol}
+                      </span>
+                      <span className="text-xs bg-slate-700 text-slate-400 px-2 py-0.5 rounded">
+                        {result.type || 'Stock'}
+                      </span>
+                    </div>
+                    <p className="text-slate-400 text-sm truncate">
+                      {result.name}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => handleAddToWatchlist(result, e)}
+                    className={`ml-4 p-2 rounded-lg transition-colors ${
+                      isInWatchlist(result.symbol)
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                    }`}
+                  >
+                    {isInWatchlist(result.symbol) ? (
+                      <Check className="w-5 h-5" />
+                    ) : (
+                      <Plus className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {recentSearches.map((symbol) => (
-              <button
-                key={symbol}
-                onClick={() => handleQuickSelect(symbol)}
-                className="px-4 py-2 bg-slate-900/30 border border-slate-800/50 rounded-xl text-white font-medium hover:bg-slate-800/50 transition-colors"
-              >
-                {symbol}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* Popular Stocks */}
-      {!query && (
-        <div className="px-5 pb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp size={16} className="text-slate-500" />
-            <h3 className="text-slate-400 font-medium text-sm">Popular Stocks</h3>
+        {/* No Results */}
+        {!isLoading && !error && query.length > 0 && results.length === 0 && (
+          <div className="px-5 pb-4">
+            <div className="bg-slate-900/20 border border-dashed border-slate-700/50 rounded-2xl p-8 text-center">
+              <Search size={32} className="mx-auto text-slate-600 mb-3" />
+              <p className="text-slate-400 font-medium">
+                No results for "{query}"
+              </p>
+              <p className="text-slate-600 text-sm mt-1">
+                Try searching for a different symbol
+              </p>
+            </div>
           </div>
-          <div className="space-y-2">
-            {popularStocks.slice(0, 5).map((stock, index) => (
-              <PopularStockItem
-                key={stock.symbol}
-                stock={stock}
-                index={index}
-                onSelect={() => onSelectStock(stock.symbol)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* AI Suggestion Hint */}
-      {!query && (
-        <div className="px-5 pb-24">
-          <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-2xl p-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-blue-500/20">
-                <Sparkles size={18} className="text-blue-400" />
-              </div>
-              <div>
-                <p className="text-blue-200 font-medium text-sm">Pro Tip</p>
-                <p className="text-blue-200/70 text-xs mt-1">
-                  Select a stock to run AI-powered analysis with SpectraScope Engine
-                </p>
+        {/* Popular Stocks (when no query) */}
+        {!isLoading && !query && (
+          <div className="px-5 pb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp size={16} className="text-slate-500" />
+              <h3 className="text-slate-400 font-medium text-sm">
+                Popular Stocks
+              </h3>
+            </div>
+            <div className="bg-slate-900/30 border border-slate-800/50 rounded-2xl overflow-hidden divide-y divide-slate-800/50">
+              {POPULAR_STOCKS.map((stock) => (
+                <div
+                  key={stock.symbol}
+                  onClick={() => handleSelectStock(stock.symbol)}
+                  className="flex items-center justify-between p-4 hover:bg-slate-800/40 cursor-pointer transition-colors"
+                >
+                  <div>
+                    <span className="text-white font-semibold">
+                      {stock.symbol}
+                    </span>
+                    <p className="text-slate-400 text-sm">{stock.name}</p>
+                  </div>
+                  <button
+                    onClick={(e) => handleAddToWatchlist(stock, e)}
+                    className={`p-2 rounded-lg transition-colors ${
+                      isInWatchlist(stock.symbol)
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                    }`}
+                  >
+                    {isInWatchlist(stock.symbol) ? (
+                      <Check className="w-5 h-5" />
+                    ) : (
+                      <Plus className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* AI Suggestion Hint */}
+        {!query && (
+          <div className="px-5 pb-6">
+            <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-2xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-blue-500/20">
+                  <Sparkles size={18} className="text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-blue-200 font-medium text-sm">Pro Tip</p>
+                  <p className="text-blue-200/70 text-xs mt-1">
+                    Select a stock to run AI-powered analysis with SpectraScope
+                    Engine
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
-  );
-});
-
-// Search Result Item Component
-interface SearchResultItemProps {
-  stock: Stock;
-  onSelect: () => void;
-  isLast: boolean;
-}
-
-const SearchResultItem = memo(function SearchResultItem({
-  stock,
-  onSelect,
-  isLast,
-}: SearchResultItemProps) {
-  const isPositive = stock.change >= 0;
-
-  return (
-    <button
-      onClick={onSelect}
-      className={`w-full flex items-center justify-between p-4 hover:bg-slate-800/40 transition-colors ${
-        !isLast ? 'border-b border-slate-800/50' : ''
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-          <span className="text-white font-bold text-xs">
-            {stock.symbol.slice(0, 2)}
-          </span>
-        </div>
-        <div className="text-left">
-          <h3 className="text-white font-semibold">{stock.symbol}</h3>
-          <p className="text-slate-500 text-sm">{stock.name}</p>
-        </div>
-      </div>
-      <div className="text-right">
-        <p className="text-white font-semibold">${stock.price.toFixed(2)}</p>
-        <p className={`text-sm ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-          {isPositive ? '+' : ''}{stock.changePercent.toFixed(2)}%
-        </p>
-      </div>
-    </button>
-  );
-});
-
-// Popular Stock Item Component
-interface PopularStockItemProps {
-  stock: Stock;
-  index: number;
-  onSelect: () => void;
-}
-
-const PopularStockItem = memo(function PopularStockItem({
-  stock,
-  index,
-  onSelect,
-}: PopularStockItemProps) {
-  const isPositive = stock.change >= 0;
-
-  return (
-    <button
-      onClick={onSelect}
-      className="w-full flex items-center justify-between p-3 bg-slate-900/30 hover:bg-slate-800/40 border border-slate-800/50 rounded-xl transition-all animate-fade-in"
-      style={{ animationDelay: `${index * 50}ms` }}
-    >
-      <div className="flex items-center gap-3">
-        <span className="text-slate-600 font-medium w-6">{index + 1}</span>
-        <div className="text-left">
-          <h3 className="text-white font-medium">{stock.symbol}</h3>
-          <p className="text-slate-500 text-xs">{stock.name}</p>
-        </div>
-      </div>
-      <div className="text-right">
-        <p className="text-white font-medium">${stock.price.toFixed(2)}</p>
-        <p className={`text-xs ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-          {isPositive ? '+' : ''}{stock.changePercent.toFixed(2)}%
-        </p>
-      </div>
-    </button>
   );
 });
 

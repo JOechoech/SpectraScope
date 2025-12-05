@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { WatchlistView, DetailView, SettingsView, SearchView } from '@/views';
 import { Navigation } from '@/components/layout';
+import { MarketStatusBar } from '@/components/ui';
 import type { ViewName } from '@/types';
 
 /**
@@ -82,6 +83,13 @@ export default function App() {
           onSelectStock={handleSelectStock}
           onBack={handleBack}
         />
+      )}
+
+      {/* Market Status Bar - show on main views, not settings */}
+      {view !== 'settings' && (
+        <div className="fixed bottom-16 left-0 right-0 z-40">
+          <MarketStatusBar />
+        </div>
       )}
 
       {/* Bottom Navigation */}

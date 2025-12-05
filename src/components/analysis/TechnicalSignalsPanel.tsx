@@ -1,11 +1,14 @@
 /**
  * TechnicalSignalsPanel - Display technical analysis signals
  *
- * Shows RSI, MACD, SMA signals with aggregate score and glow effect
+ * Shows RSI, MACD, SMA signals with aggregate score and glow effect.
+ * Tap on any indicator to see educational info about what it means.
  */
 
-import { useMemo, memo } from 'react';
+import { useMemo, memo, useState } from 'react';
+import { Info } from 'lucide-react';
 import { SignalBadge } from '@/components/ui/SignalBadge';
+import { IndicatorTooltip } from './IndicatorTooltip';
 import {
   calculateRSI,
   calculateMACD,
@@ -40,6 +43,11 @@ export const TechnicalSignalsPanel = memo(function TechnicalSignalsPanel({
   priceData,
   currentPrice,
 }: TechnicalSignalsPanelProps) {
+  const [selectedIndicator, setSelectedIndicator] = useState<{
+    name: string;
+    signal: 'bullish' | 'neutral' | 'bearish';
+  } | null>(null);
+
   const analysis = useMemo(() => {
     if (priceData.length < 26) return null;
 
@@ -137,16 +145,27 @@ export const TechnicalSignalsPanel = memo(function TechnicalSignalsPanel({
         </div>
       </div>
 
-      {/* Signal List */}
+      {/* Signal List - Tap for info */}
       <div className="space-y-2">
         {signals.map((signal) => (
           <div
             key={signal.name}
-            className="flex items-center justify-between py-2 border-b border-slate-800/50 last:border-0"
+            onClick={() =>
+              setSelectedIndicator({
+                name: signal.name,
+                signal: signal.signal,
+              })
+            }
+            className="flex items-center justify-between py-2 px-2 -mx-2 border-b border-slate-800/50 last:border-0 cursor-pointer hover:bg-slate-800/50 rounded transition-colors"
           >
-            <span className="text-slate-400">{signal.name}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400">{signal.name}</span>
+              <Info className="w-3 h-3 text-slate-500" />
+            </div>
             <div className="flex items-center gap-3">
-              <span className="text-white font-mono text-sm">{signal.displayValue}</span>
+              <span className="text-white font-mono text-sm">
+                {signal.displayValue}
+              </span>
               <SignalBadge
                 signal={signal.signal}
                 label={signal.label}
@@ -168,6 +187,15 @@ export const TechnicalSignalsPanel = memo(function TechnicalSignalsPanel({
           </span>
         </div>
       </div>
+
+      {/* Indicator Info Tooltip */}
+      {selectedIndicator && (
+        <IndicatorTooltip
+          indicatorName={selectedIndicator.name}
+          currentSignal={selectedIndicator.signal}
+          onClose={() => setSelectedIndicator(null)}
+        />
+      )}
     </div>
   );
 });

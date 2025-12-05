@@ -16,6 +16,7 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
+  CartesianGrid,
 } from 'recharts';
 
 export interface HistoricalDataPoint {
@@ -56,6 +57,38 @@ export const PriceChart = memo(function PriceChart({
   const isPositive = change >= 0;
   const color = isPositive ? '#10b981' : '#f43f5e';
 
+  // Calculate Y-axis domain with padding
+  const { minPrice, maxPrice } = useMemo(() => {
+    if (filteredData.length === 0) return { minPrice: 0, maxPrice: 100 };
+    const prices = filteredData.map((d) => d.close);
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const padding = (max - min) * 0.05;
+    return {
+      minPrice: Math.floor((min - padding) * 100) / 100,
+      maxPrice: Math.ceil((max + padding) * 100) / 100,
+    };
+  }, [filteredData]);
+
+  // Format date based on timeframe
+  const formatDate = (date: string) => {
+    const d = new Date(date);
+    switch (timeframe) {
+      case '1W':
+        return d.toLocaleDateString('en-US', { weekday: 'short' });
+      case '1M':
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      case '3M':
+      case '1Y':
+        return d.toLocaleDateString('en-US', { month: 'short' });
+      default:
+        return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    }
+  };
+
+  // Format price for Y-axis
+  const formatPrice = (value: number) => `$${value.toFixed(0)}`;
+
   return (
     <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800/50 rounded-2xl p-4">
       {/* Price Header */}
@@ -75,26 +108,69 @@ export const PriceChart = memo(function PriceChart({
       </div>
 
       {/* Chart */}
-      <div className="h-48">
+      <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={filteredData}>
+          <AreaChart
+            data={filteredData}
+            margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
+          >
             <defs>
               <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor={color} stopOpacity={0.3} />
                 <stop offset="95%" stopColor={color} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="date" hide />
-            <YAxis hide domain={['dataMin - 5', 'dataMax + 5']} />
+
+            {/* Grid lines */}
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#334155"
+              vertical={false}
+            />
+
+            {/* X Axis - Dates */}
+            <XAxis
+              dataKey="date"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748b', fontSize: 11 }}
+              tickFormatter={formatDate}
+              interval="preserveStartEnd"
+              minTickGap={40}
+            />
+
+            {/* Y Axis - Prices */}
+            <YAxis
+              domain={[minPrice, maxPrice]}
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: '#64748b', fontSize: 11 }}
+              tickFormatter={formatPrice}
+              width={50}
+              orientation="right"
+            />
+
+            {/* Tooltip */}
             <Tooltip
               contentStyle={{
                 background: '#1e293b',
                 border: '1px solid #334155',
                 borderRadius: '8px',
+                padding: '8px 12px',
               }}
-              labelStyle={{ color: '#94a3b8' }}
+              labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
               formatter={(value: number) => [`$${value.toFixed(2)}`, 'Price']}
+              labelFormatter={(label) =>
+                new Date(label).toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              }
             />
+
+            {/* Area */}
             <Area
               type="monotone"
               dataKey="close"
@@ -112,7 +188,7 @@ export const PriceChart = memo(function PriceChart({
           <button
             key={tf}
             onClick={() => setTimeframe(tf)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               timeframe === tf
                 ? 'bg-blue-600 text-white'
                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'

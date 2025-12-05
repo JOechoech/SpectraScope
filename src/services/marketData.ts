@@ -347,6 +347,36 @@ export function getDataSourceInfo(): {
   };
 }
 
+/**
+ * Get current data provider - POLYGON FIRST!
+ */
+export function getCurrentProvider(): DataSource {
+  const { source } = getPreferredSource();
+  return source;
+}
+
+/**
+ * Get human-readable label for current provider
+ */
+export function getProviderLabel(): string {
+  const provider = getCurrentProvider();
+  switch (provider) {
+    case 'polygon':
+      return 'Real-time via Polygon.io';
+    case 'alphavantage':
+      return 'Delayed quotes via Alpha Vantage';
+    default:
+      return 'Demo mode (no API key)';
+  }
+}
+
+/**
+ * Check if current provider supports real-time data
+ */
+export function isRealtime(): boolean {
+  return getCurrentProvider() === 'polygon';
+}
+
 export default {
   getBulkQuotes,
   getQuote,
@@ -355,4 +385,7 @@ export default {
   getOptionsMetrics,
   clearCache,
   getDataSourceInfo,
+  getCurrentProvider,
+  getProviderLabel,
+  isRealtime,
 };

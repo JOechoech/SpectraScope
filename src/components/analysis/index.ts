@@ -13,3 +13,4 @@ export { AIInsightsPanel } from './AIInsightsPanel';
 export type { AIInsightsPanelProps } from './AIInsightsPanel';
 export { NewsPanel } from './NewsPanel';
 export { TechnicalSignalsPanel } from './TechnicalSignalsPanel';
+export { IndicatorTooltip } from './IndicatorTooltip';
