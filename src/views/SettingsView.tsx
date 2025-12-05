@@ -1,68 +1,117 @@
-import { useState, memo } from 'react';
+/**
+ * SettingsView - Multi-AI API Key Management & Preferences
+ *
+ * Organized by sections:
+ * - Active Sources overview
+ * - Required APIs (Anthropic)
+ * - Market Data APIs (Alpha Vantage, Polygon)
+ * - Intelligence Sources (Finnhub, Grok, Perplexity)
+ * - Analysis Stats
+ * - Preferences
+ */
+
+import { useState, memo, useMemo, useCallback } from 'react';
 import {
   Key,
   Brain,
   Sparkles,
   BarChart3,
-  Activity,
-  Eye,
-  EyeOff,
-  Check,
+  Newspaper,
+  MessageCircle,
+  Search,
+  TrendingUp,
   Shield,
   Moon,
   Sun,
+  Trash2,
+  Activity,
 } from 'lucide-react';
 import { Header } from '@/components/layout';
+import { ApiKeyInput, ActiveSourcesCard } from '@/components/settings';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
+import { useAnalysisStore } from '@/stores/useAnalysisStore';
 import type { ApiKeys, AiProvider } from '@/types';
 
 interface SettingsViewProps {
   onBack: () => void;
 }
 
-interface ApiKeyField {
+// ═══════════════════════════════════════════════════════════════════════════
+// API KEY CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ApiKeyConfig {
   key: keyof ApiKeys;
   label: string;
   description: string;
   icon: typeof Brain;
   placeholder: string;
+  required?: boolean;
+  tier?: 'free' | 'premium';
+  freeLink?: string;
 }
 
-const apiKeyFields: ApiKeyField[] = [
+const requiredApis: ApiKeyConfig[] = [
   {
     key: 'anthropic',
-    label: 'Anthropic API Key',
-    description: 'Powers the AI reasoning engine for scenario generation',
+    label: 'Anthropic (Claude)',
+    description: 'Powers the Master AI analysis and scenario generation',
     icon: Sparkles,
     placeholder: 'sk-ant-...',
-  },
-  {
-    key: 'openai',
-    label: 'OpenAI API Key',
-    description: 'Alternative AI provider for analysis',
-    icon: Brain,
-    placeholder: 'sk-...',
-  },
-  {
-    key: 'alphavantage',
-    label: 'Alpha Vantage API Key',
-    description: 'Financial data provider for market data',
-    icon: BarChart3,
-    placeholder: 'Your API key (16 chars)',
-  },
-  {
-    key: 'twitter',
-    label: 'Twitter/X API Key (Optional)',
-    description: 'For social sentiment analysis',
-    icon: Activity,
-    placeholder: 'Optional',
+    required: true,
   },
 ];
 
-/**
- * SettingsView - API Key Management & Preferences
- * Uses Zustand store for persistent API key storage
- */
+const marketDataApis: ApiKeyConfig[] = [
+  {
+    key: 'alphavantage',
+    label: 'Alpha Vantage',
+    description: 'Stock prices, historical data & technical indicators',
+    icon: BarChart3,
+    placeholder: 'Your 16-character key',
+    freeLink: 'https://www.alphavantage.co/support/#api-key',
+  },
+  {
+    key: 'polygon',
+    label: 'Polygon.io',
+    description: 'Real-time quotes, options flow & greeks',
+    icon: TrendingUp,
+    placeholder: 'Your Polygon API key',
+    tier: 'premium',
+  },
+];
+
+const intelligenceApis: ApiKeyConfig[] = [
+  {
+    key: 'finnhub',
+    label: 'Finnhub',
+    description: 'News headlines & market sentiment',
+    icon: Newspaper,
+    placeholder: 'Your Finnhub key',
+    freeLink: 'https://finnhub.io/register',
+  },
+  {
+    key: 'grok',
+    label: 'Grok (xAI)',
+    description: 'Twitter/X sentiment analysis',
+    icon: MessageCircle,
+    placeholder: 'xai-...',
+    tier: 'premium',
+  },
+  {
+    key: 'perplexity',
+    label: 'Perplexity',
+    description: 'Web research & citations',
+    icon: Search,
+    placeholder: 'pplx-...',
+    tier: 'premium',
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════
+
 export const SettingsView = memo(function SettingsView({
   onBack,
 }: SettingsViewProps) {
@@ -74,34 +123,54 @@ export const SettingsView = memo(function SettingsView({
     setDefaultAiProvider,
   } = useApiKeysStore();
 
-  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const { totalCost, totalAnalyses, clearHistory } = useAnalysisStore();
+
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>(() => {
     // Initialize with stored keys
+    const allApis = [...requiredApis, ...marketDataApis, ...intelligenceApis];
     const initial: Record<string, string> = {};
-    apiKeyFields.forEach((field) => {
+    allApis.forEach((field) => {
       initial[field.key] = getApiKey(field.key) || '';
     });
     return initial;
   });
   const [darkMode, setDarkMode] = useState(true);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
-  const handleSave = (provider: keyof ApiKeys) => {
-    const value = inputValues[provider];
-    if (value) {
-      setApiKey(provider, value);
-      setSaved({ ...saved, [provider]: true });
-      setTimeout(() => setSaved({ ...saved, [provider]: false }), 2000);
-    }
-  };
+  const handleSave = useCallback(
+    (provider: keyof ApiKeys) => {
+      const value = inputValues[provider];
+      if (value) {
+        setApiKey(provider, value);
+        setSaved((prev) => ({ ...prev, [provider]: true }));
+        setTimeout(
+          () => setSaved((prev) => ({ ...prev, [provider]: false })),
+          2000
+        );
+      }
+    },
+    [inputValues, setApiKey]
+  );
 
-  const toggleShowKey = (key: string) => {
-    setShowKeys({ ...showKeys, [key]: !showKeys[key] });
-  };
+  const handleInputChange = useCallback((key: string, value: string) => {
+    setInputValues((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
-  const handleInputChange = (key: string, value: string) => {
-    setInputValues({ ...inputValues, [key]: value });
-  };
+  const handleClearHistory = useCallback(() => {
+    clearHistory();
+    setShowClearConfirm(false);
+  }, [clearHistory]);
+
+  // Format currency
+  const formatCurrency = useMemo(() => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 4,
+    });
+  }, []);
 
   return (
     <div className="min-h-screen bg-black pb-24">
@@ -113,42 +182,108 @@ export const SettingsView = memo(function SettingsView({
         onBack={onBack}
       />
 
-      {/* API Keys Section */}
-      <div className="px-5 py-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20">
-            <Key size={20} className="text-amber-400" />
-          </div>
-          <div>
-            <h2 className="text-white font-semibold">API Key Management</h2>
-            <p className="text-slate-500 text-sm">
-              Stored locally in your browser
-            </p>
-          </div>
-        </div>
+      <div className="px-5 py-6 space-y-6">
+        {/* Active Sources Overview */}
+        <ActiveSourcesCard />
 
-        <div className="space-y-4">
-          {apiKeyFields.map((field) => (
+        {/* Required APIs Section */}
+        <Section
+          icon={Key}
+          iconGradient="from-rose-500/20 to-pink-500/20"
+          iconColor="text-rose-400"
+          title="Required"
+          subtitle="Essential for AI analysis"
+        >
+          {requiredApis.map((api) => (
             <ApiKeyInput
-              key={field.key}
-              field={field}
-              value={inputValues[field.key] || ''}
-              showKey={showKeys[field.key] || false}
-              isSaved={saved[field.key] || false}
+              key={api.key}
+              providerKey={api.key}
+              label={api.label}
+              description={api.description}
+              icon={api.icon}
+              placeholder={api.placeholder}
+              value={inputValues[api.key] || ''}
+              onChange={(value) => handleInputChange(api.key, value)}
+              onSave={() => handleSave(api.key)}
+              required={api.required}
+              tier={api.tier}
+              freeLink={api.freeLink}
               isValid={
-                inputValues[field.key]
-                  ? validateApiKey(field.key, inputValues[field.key])
+                inputValues[api.key]
+                  ? validateApiKey(api.key, inputValues[api.key])
                   : true
               }
-              onChange={(value) => handleInputChange(field.key, value)}
-              onToggleShow={() => toggleShowKey(field.key)}
-              onSave={() => handleSave(field.key)}
+              isSaved={saved[api.key] || false}
             />
           ))}
-        </div>
+        </Section>
+
+        {/* Market Data APIs Section */}
+        <Section
+          icon={BarChart3}
+          iconGradient="from-blue-500/20 to-cyan-500/20"
+          iconColor="text-blue-400"
+          title="Market Data"
+          subtitle="Stock prices & historical data"
+        >
+          {marketDataApis.map((api) => (
+            <ApiKeyInput
+              key={api.key}
+              providerKey={api.key}
+              label={api.label}
+              description={api.description}
+              icon={api.icon}
+              placeholder={api.placeholder}
+              value={inputValues[api.key] || ''}
+              onChange={(value) => handleInputChange(api.key, value)}
+              onSave={() => handleSave(api.key)}
+              required={api.required}
+              tier={api.tier}
+              freeLink={api.freeLink}
+              isValid={
+                inputValues[api.key]
+                  ? validateApiKey(api.key, inputValues[api.key])
+                  : true
+              }
+              isSaved={saved[api.key] || false}
+            />
+          ))}
+        </Section>
+
+        {/* Intelligence Sources Section */}
+        <Section
+          icon={Brain}
+          iconGradient="from-purple-500/20 to-indigo-500/20"
+          iconColor="text-purple-400"
+          title="Intelligence Sources"
+          subtitle="News, sentiment & research"
+        >
+          {intelligenceApis.map((api) => (
+            <ApiKeyInput
+              key={api.key}
+              providerKey={api.key}
+              label={api.label}
+              description={api.description}
+              icon={api.icon}
+              placeholder={api.placeholder}
+              value={inputValues[api.key] || ''}
+              onChange={(value) => handleInputChange(api.key, value)}
+              onSave={() => handleSave(api.key)}
+              required={api.required}
+              tier={api.tier}
+              freeLink={api.freeLink}
+              isValid={
+                inputValues[api.key]
+                  ? validateApiKey(api.key, inputValues[api.key])
+                  : true
+              }
+              isSaved={saved[api.key] || false}
+            />
+          ))}
+        </Section>
 
         {/* Security Notice */}
-        <div className="mt-4 flex items-start gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+        <div className="flex items-start gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
           <Shield size={18} className="text-amber-400 mt-0.5 flex-shrink-0" />
           <div>
             <p className="text-amber-200 text-sm font-medium">Security Notice</p>
@@ -159,175 +294,174 @@ export const SettingsView = memo(function SettingsView({
             </p>
           </div>
         </div>
-      </div>
 
-      {/* AI Provider Selection */}
-      <div className="px-5 py-6 border-t border-slate-800/50">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20">
-            <Brain size={20} className="text-blue-400" />
+        {/* Analysis Stats Section */}
+        <Section
+          icon={Activity}
+          iconGradient="from-emerald-500/20 to-teal-500/20"
+          iconColor="text-emerald-400"
+          title="Analysis Stats"
+          subtitle="Usage tracking"
+        >
+          <div className="bg-slate-900/30 border border-slate-800/50 rounded-2xl p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400">Total Analyses</span>
+              <span className="text-white font-medium">{totalAnalyses}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400">Total Cost</span>
+              <span className="text-white font-medium">
+                {formatCurrency.format(totalCost)}
+              </span>
+            </div>
+            <div className="border-t border-slate-800/50 pt-4">
+              {showClearConfirm ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 text-sm">Are you sure?</span>
+                  <button
+                    onClick={handleClearHistory}
+                    className="px-3 py-1.5 bg-rose-500/20 text-rose-400 rounded-lg text-sm font-medium hover:bg-rose-500/30 transition-colors"
+                  >
+                    Yes, clear
+                  </button>
+                  <button
+                    onClick={() => setShowClearConfirm(false)}
+                    className="px-3 py-1.5 bg-slate-800/50 text-slate-400 rounded-lg text-sm font-medium hover:bg-slate-700/50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowClearConfirm(true)}
+                  className="flex items-center gap-2 text-slate-400 hover:text-rose-400 transition-colors text-sm"
+                >
+                  <Trash2 size={16} />
+                  Clear Analysis History
+                </button>
+              )}
+            </div>
           </div>
-          <div>
-            <h2 className="text-white font-semibold">AI Provider</h2>
-            <p className="text-slate-500 text-sm">
-              Select default AI for analysis
+        </Section>
+
+        {/* AI Provider Selection */}
+        <Section
+          icon={Sparkles}
+          iconGradient="from-amber-500/20 to-orange-500/20"
+          iconColor="text-amber-400"
+          title="AI Provider"
+          subtitle="Select default AI engine"
+        >
+          <div className="flex gap-3">
+            <ProviderButton
+              provider="anthropic"
+              label="Claude"
+              isActive={defaultAiProvider === 'anthropic'}
+              onClick={() => setDefaultAiProvider('anthropic')}
+            />
+            <ProviderButton
+              provider="openai"
+              label="GPT-4"
+              isActive={defaultAiProvider === 'openai'}
+              onClick={() => setDefaultAiProvider('openai')}
+            />
+          </div>
+        </Section>
+
+        {/* Appearance Section */}
+        <Section
+          icon={Moon}
+          iconGradient="from-slate-500/20 to-slate-600/20"
+          iconColor="text-slate-400"
+          title="Appearance"
+          subtitle="Visual preferences"
+        >
+          <div className="bg-slate-900/30 border border-slate-800/50 rounded-2xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-slate-800/50">
+                  {darkMode ? (
+                    <Moon size={18} className="text-slate-400" />
+                  ) : (
+                    <Sun size={18} className="text-amber-400" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-white font-medium">Dark Mode</h3>
+                  <p className="text-slate-500 text-xs">OLED-optimized theme</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className={`w-14 h-8 rounded-full transition-all duration-300 ${
+                  darkMode ? 'bg-blue-500' : 'bg-slate-700'
+                }`}
+              >
+                <div
+                  className={`w-6 h-6 rounded-full bg-white shadow-lg transition-transform duration-300 ${
+                    darkMode ? 'translate-x-7' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </Section>
+
+        {/* About Section */}
+        <div className="pt-6 border-t border-slate-800/50">
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+              <Sparkles size={32} className="text-white" />
+            </div>
+            <h3 className="text-white font-bold text-xl">SpectraScope</h3>
+            <p className="text-slate-500 text-sm mt-1">Version 0.1.0</p>
+            <p className="text-slate-600 text-xs mt-4">
+              AI-Powered Investment Analysis
             </p>
           </div>
         </div>
-
-        <div className="flex gap-3">
-          <ProviderButton
-            provider="anthropic"
-            label="Anthropic Claude"
-            isActive={defaultAiProvider === 'anthropic'}
-            onClick={() => setDefaultAiProvider('anthropic')}
-          />
-          <ProviderButton
-            provider="openai"
-            label="OpenAI GPT"
-            isActive={defaultAiProvider === 'openai'}
-            onClick={() => setDefaultAiProvider('openai')}
-          />
-        </div>
-      </div>
-
-      {/* Appearance Section */}
-      <div className="px-5 py-6 border-t border-slate-800/50">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20">
-            <Moon size={20} className="text-purple-400" />
-          </div>
-          <div>
-            <h2 className="text-white font-semibold">Appearance</h2>
-            <p className="text-slate-500 text-sm">Customize the look and feel</p>
-          </div>
-        </div>
-
-        <div className="bg-slate-900/30 border border-slate-800/50 rounded-2xl p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-slate-800/50">
-                {darkMode ? (
-                  <Moon size={18} className="text-slate-400" />
-                ) : (
-                  <Sun size={18} className="text-amber-400" />
-                )}
-              </div>
-              <div>
-                <h3 className="text-white font-medium">Dark Mode</h3>
-                <p className="text-slate-500 text-xs">OLED-optimized dark theme</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className={`w-14 h-8 rounded-full transition-all duration-300 ${
-                darkMode ? 'bg-blue-500' : 'bg-slate-700'
-              }`}
-            >
-              <div
-                className={`w-6 h-6 rounded-full bg-white shadow-lg transition-transform duration-300 ${
-                  darkMode ? 'translate-x-7' : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* About Section */}
-      <div className="px-5 py-6 border-t border-slate-800/50">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
-            <Sparkles size={32} className="text-white" />
-          </div>
-          <h3 className="text-white font-bold text-xl">SpectraScope</h3>
-          <p className="text-slate-500 text-sm mt-1">Version 0.1.0</p>
-          <p className="text-slate-600 text-xs mt-4">
-            AI-Powered Investment Analysis
-          </p>
-        </div>
       </div>
     </div>
   );
 });
 
-// API Key Input Component
-interface ApiKeyInputProps {
-  field: ApiKeyField;
-  value: string;
-  showKey: boolean;
-  isSaved: boolean;
-  isValid: boolean;
-  onChange: (value: string) => void;
-  onToggleShow: () => void;
-  onSave: () => void;
+// ═══════════════════════════════════════════════════════════════════════════
+// SUB-COMPONENTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface SectionProps {
+  icon: typeof Brain;
+  iconGradient: string;
+  iconColor: string;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
 }
 
-const ApiKeyInput = memo(function ApiKeyInput({
-  field,
-  value,
-  showKey,
-  isSaved,
-  isValid,
-  onChange,
-  onToggleShow,
-  onSave,
-}: ApiKeyInputProps) {
-  const Icon = field.icon;
-
+const Section = memo(function Section({
+  icon: Icon,
+  iconGradient,
+  iconColor,
+  title,
+  subtitle,
+  children,
+}: SectionProps) {
   return (
-    <div className="bg-slate-900/30 border border-slate-800/50 rounded-2xl p-4">
-      <div className="flex items-start gap-3 mb-3">
-        <div className="p-2 rounded-xl bg-slate-800/50">
-          <Icon size={18} className="text-slate-400" />
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className={`p-2 rounded-xl bg-gradient-to-br ${iconGradient}`}>
+          <Icon size={20} className={iconColor} />
         </div>
-        <div className="flex-1">
-          <h3 className="text-white font-medium">{field.label}</h3>
-          <p className="text-slate-500 text-xs mt-0.5">{field.description}</p>
+        <div>
+          <h2 className="text-white font-semibold">{title}</h2>
+          <p className="text-slate-500 text-sm">{subtitle}</p>
         </div>
       </div>
-
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <input
-            type={showKey ? 'text' : 'password'}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={field.placeholder}
-            className={`input-field pr-12 ${
-              value && !isValid ? 'border-rose-500/50 ring-1 ring-rose-500/30' : ''
-            }`}
-          />
-          <button
-            onClick={onToggleShow}
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-slate-700/50 rounded-lg transition-colors"
-          >
-            {showKey ? (
-              <EyeOff size={16} className="text-slate-500" />
-            ) : (
-              <Eye size={16} className="text-slate-500" />
-            )}
-          </button>
-        </div>
-        <button
-          onClick={onSave}
-          disabled={!value || !isValid}
-          className={`px-4 py-3 rounded-xl font-medium transition-all ${
-            isSaved
-              ? 'bg-emerald-500/20 text-emerald-400'
-              : value && isValid
-              ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
-              : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
-          }`}
-        >
-          {isSaved ? <Check size={18} /> : 'Save'}
-        </button>
-      </div>
+      <div className="space-y-3">{children}</div>
     </div>
   );
 });
 
-// Provider Button Component
 interface ProviderButtonProps {
   provider: AiProvider;
   label: string;
@@ -336,7 +470,6 @@ interface ProviderButtonProps {
 }
 
 const ProviderButton = memo(function ProviderButton({
-  provider: _provider,
   label,
   isActive,
   onClick,
