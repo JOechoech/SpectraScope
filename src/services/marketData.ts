@@ -67,16 +67,21 @@ function isCacheValid<T>(entry: CacheEntry<T> | undefined, ttl: number): boolean
 function getPreferredSource(): { source: DataSource; apiKey: string | null } {
   const { getApiKey } = useApiKeysStore.getState();
 
+  // POLYGON FIRST - check with trim to handle whitespace
   const polygonKey = getApiKey('polygon');
-  if (polygonKey) {
+  if (polygonKey && polygonKey.trim().length > 5) {
+    console.log('[MarketData] Using POLYGON');
     return { source: 'polygon', apiKey: polygonKey };
   }
 
+  // Alpha Vantage fallback
   const alphaKey = getApiKey('alphavantage');
-  if (alphaKey) {
+  if (alphaKey && alphaKey.trim().length > 5) {
+    console.log('[MarketData] Using ALPHA VANTAGE');
     return { source: 'alphavantage', apiKey: alphaKey };
   }
 
+  console.log('[MarketData] Using MOCK');
   return { source: 'mock', apiKey: null };
 }
 
@@ -367,6 +372,38 @@ export function getProviderLabel(): string {
       return 'Delayed quotes via Alpha Vantage';
     default:
       return 'Demo mode (no API key)';
+  }
+}
+
+/**
+ * Get provider info with color for UI display
+ */
+export function getProviderInfo(): {
+  source: DataSource;
+  label: string;
+  color: 'emerald' | 'amber' | 'slate';
+} {
+  const source = getCurrentProvider();
+
+  switch (source) {
+    case 'polygon':
+      return {
+        source,
+        label: 'Real-time via Polygon.io',
+        color: 'emerald',
+      };
+    case 'alphavantage':
+      return {
+        source,
+        label: 'Delayed quotes via Alpha Vantage (rate limited)',
+        color: 'amber',
+      };
+    default:
+      return {
+        source,
+        label: 'Demo mode - Add API key in Settings',
+        color: 'slate',
+      };
   }
 }
 

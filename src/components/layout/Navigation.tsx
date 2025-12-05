@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { List, Search, Settings } from 'lucide-react';
+import { Home, Search, Settings } from 'lucide-react';
 import type { ViewName } from '@/types';
 
 interface NavigationProps {
@@ -10,11 +10,11 @@ interface NavigationProps {
 interface NavItem {
   id: ViewName;
   label: string;
-  icon: typeof List;
+  icon: typeof Home;
 }
 
 const navItems: NavItem[] = [
-  { id: 'watchlist', label: 'Watchlist', icon: List },
+  { id: 'watchlist', label: 'Home', icon: Home },
   { id: 'search', label: 'Search', icon: Search },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
