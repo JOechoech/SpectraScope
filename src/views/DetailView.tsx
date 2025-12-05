@@ -22,7 +22,9 @@ import { ScopeButton } from '@/components/analysis/ScopeButton';
 import { ScenarioCard } from '@/components/analysis/ScenarioCard';
 import { SourceAttribution } from '@/components/analysis/SourceAttribution';
 import { AIInsightsPanel } from '@/components/analysis/AIInsightsPanel';
+import { BottomLine } from '@/components/analysis/BottomLine';
 import { HoldingsInput } from '@/components/portfolio/HoldingsInput';
+import { WarpAnimation } from '@/components/effects/WarpAnimation';
 import {
   getQuote,
   getDailyData,
@@ -61,6 +63,7 @@ interface AnalysisResult {
     base: Scenario;
   };
   confidence: number;
+  bottomLine?: string;
   availableSources: string[];
   missingSources: string[];
   intelligenceReports: AnyIntelligenceReport[];
@@ -168,6 +171,10 @@ export const DetailView = memo(function DetailView({
     setIsAnalyzing(true);
     setError(null);
 
+    // Track start time for minimum animation duration
+    const startTime = Date.now();
+    const MIN_ANIMATION_TIME = 3000; // 3 seconds minimum
+
     try {
       // Gather intelligence from all sources
       const intelligence = await gatherIntelligence({
@@ -183,10 +190,17 @@ export const DetailView = memo(function DetailView({
         anthropicKey
       );
 
+      // Ensure minimum animation time for better UX
+      const elapsed = Date.now() - startTime;
+      if (elapsed < MIN_ANIMATION_TIME) {
+        await new Promise((r) => setTimeout(r, MIN_ANIMATION_TIME - elapsed));
+      }
+
       // Build analysis result
       const analysisResult: AnalysisResult = {
         scenarios: result.scenarios,
         confidence: result.confidence || 75,
+        bottomLine: result.bottomLine,
         availableSources: intelligence.availableSources,
         missingSources: intelligence.missingSources,
         intelligenceReports: intelligence.reports,
@@ -229,7 +243,11 @@ export const DetailView = memo(function DetailView({
   }
 
   return (
-    <div className="min-h-screen bg-black pb-24">
+    <>
+      {/* Warp Animation Overlay */}
+      <WarpAnimation isActive={isAnalyzing} />
+
+      <div className="min-h-screen bg-black pb-24">
       {/* Header */}
       <div className="flex items-center gap-4 p-4 border-b border-slate-800/50">
         <button
@@ -317,6 +335,15 @@ export const DetailView = memo(function DetailView({
               </span>
             </div>
 
+            {/* Bottom Line Summary - FIRST! */}
+            {analysis.bottomLine && (
+              <BottomLine
+                summary={analysis.bottomLine}
+                confidence={analysis.confidence}
+                sourcesUsed={analysis.availableSources}
+              />
+            )}
+
             <SourceAttribution
               availableSources={analysis.availableSources as any}
               missingSources={analysis.missingSources as any}
@@ -352,6 +379,7 @@ export const DetailView = memo(function DetailView({
         )}
       </div>
     </div>
+    </>
   );
 });
 
