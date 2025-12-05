@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { WatchlistView, DetailView, SettingsView, SearchView } from '@/views';
+import { WatchlistView, DetailView, SettingsView, SearchView, PortfolioView } from '@/views';
 import { Navigation } from '@/components/layout';
 import { MarketStatusBar } from '@/components/ui';
 import type { ViewName } from '@/types';
@@ -11,13 +11,16 @@ import type { ViewName } from '@/types';
 export default function App() {
   const [view, setView] = useState<ViewName>('watchlist');
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [showPortfolio, setShowPortfolio] = useState(false);
 
   const handleSelectStock = useCallback((symbol: string) => {
     setSelectedSymbol(symbol);
+    setShowPortfolio(false);
     setView('detail');
   }, []);
 
   const handleBack = useCallback(() => {
+    setShowPortfolio(false);
     setView('watchlist');
     setSelectedSymbol(null);
   }, []);
@@ -26,10 +29,15 @@ export default function App() {
     setView('settings');
   }, []);
 
+  const handleOpenPortfolio = useCallback(() => {
+    setShowPortfolio(true);
+  }, []);
+
   const handleNavigate = useCallback((newView: ViewName) => {
     if (newView !== 'detail') {
       setSelectedSymbol(null);
     }
+    setShowPortfolio(false);
     setView(newView);
   }, []);
 
@@ -68,10 +76,18 @@ export default function App() {
       `}</style>
 
       {/* Views */}
-      {view === 'watchlist' && (
+      {showPortfolio && (
+        <PortfolioView
+          onBack={() => setShowPortfolio(false)}
+          onSelectStock={handleSelectStock}
+        />
+      )}
+
+      {!showPortfolio && view === 'watchlist' && (
         <WatchlistView
           onSelectStock={handleSelectStock}
           onOpenSettings={handleOpenSettings}
+          onOpenPortfolio={handleOpenPortfolio}
         />
       )}
 
@@ -91,7 +107,7 @@ export default function App() {
       )}
 
       {/* Fixed Bottom - Status + Nav combined */}
-      {view !== 'detail' && (
+      {view !== 'detail' && !showPortfolio && (
         <div className="fixed bottom-0 left-0 right-0 z-50 bg-black">
           {view !== 'settings' && <MarketStatusBar />}
           <Navigation currentView={view} onNavigate={handleNavigate} />

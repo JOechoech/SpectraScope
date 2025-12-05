@@ -87,6 +87,15 @@ const marketDataApis: ApiKeyConfig[] = [
 
 const intelligenceApis: ApiKeyConfig[] = [
   {
+    key: 'finnhub',
+    label: 'Finnhub',
+    description: 'FREE market news & company data (60 calls/min)',
+    icon: Newspaper,
+    placeholder: 'Your Finnhub API key',
+    tier: 'free',
+    freeLink: 'https://finnhub.io/register',
+  },
+  {
     key: 'newsapi',
     label: 'NewsAPI',
     description: 'News headlines & sentiment analysis',
