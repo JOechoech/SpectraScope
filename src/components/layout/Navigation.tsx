@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { BarChart3, Settings, List } from 'lucide-react';
+import { BarChart3, Settings, List, Search } from 'lucide-react';
 import type { ViewName } from '@/types';
 
 interface NavigationProps {
@@ -16,6 +16,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { id: 'watchlist', label: 'Watchlist', icon: List },
+  { id: 'search', label: 'Search', icon: Search },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -29,7 +30,7 @@ export const Navigation = memo(function Navigation({
   marketStatus = 'open',
 }: NavigationProps) {
   // Don't show nav on detail view
-  if (currentView === 'detail' || currentView === 'search') {
+  if (currentView === 'detail') {
     return null;
   }
 

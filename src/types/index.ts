@@ -172,6 +172,8 @@ export interface ApiKeys {
   anthropic?: string;
   openai?: string;
   twitter?: string;
+  grok?: string;        // xAI API for social sentiment
+  perplexity?: string;  // Perplexity API for web research
 }
 
 export interface UserSettings {
@@ -259,3 +261,9 @@ export interface AlphaVantageTimeSeries {
     '5. volume': string;
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INTELLIGENCE TYPES (Re-export)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export * from './intelligence';

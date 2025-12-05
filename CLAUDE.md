@@ -521,6 +521,314 @@ function determineTrend(prices: number[]): 'uptrend' | 'downtrend' | 'sideways' 
 
 ---
 
+## 📊 Technical Analysis Module
+
+### Datenquellen-Strategie (Hybrid)
+
+SpectraScope nutzt einen hybriden Ansatz:
+- **Free Tier:** Funktioniert ohne API-Keys (mit Einschränkungen)
+- **Premium:** User trägt eigene API-Keys ein → Mehr Features
+
+| Tier | Quelle | Zweck |
+|------|--------|-------|
+| Free (Default) | Alpha Vantage Free | Historische Kurse (25 calls/Tag) |
+| Free (Options) | Yahoo Finance | Basic Options (instabil) |
+| Premium | Polygon.io | Full Data + Greeks + Real-time |
+
+### Signal-Mapping (Bull/Bear/Neutral)
+
+Alle Indikatoren werden auf unser 3-Farben-Schema gemappt:
+- 🟢 **Bullish** (`text-emerald-500`, `bg-emerald-500/20`)
+- 🟡 **Neutral** (`text-amber-500`, `bg-amber-500/20`)
+- 🔴 **Bearish** (`text-rose-500`, `bg-rose-500/20`)
+
+### ✨ Signal Glow Effect
+
+Aktien mit besonders starken Signalen erhalten einen animierten Glow-Effekt:
+
+| Score | Effekt | CSS Class |
+|-------|--------|-----------|
+| ≥ 80% Bullish | Golden Pulse | `glow-bullish` |
+| 40-79% | Kein Effekt | - |
+| ≤ 20% Bearish | Red Warning | `glow-bearish` |
+
+```css
+/* In index.css */
+.glow-bullish {
+  animation: pulse-gold 2s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+}
+
+@keyframes pulse-gold {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(251, 191, 36, 0.3);
+    border-color: rgba(251, 191, 36, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(251, 191, 36, 0.6);
+    border-color: rgba(251, 191, 36, 0.8);
+  }
+}
+
+.glow-bearish {
+  animation: pulse-red 2s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(244, 63, 94, 0.3);
+}
+
+@keyframes pulse-red {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(244, 63, 94, 0.2);
+    border-color: rgba(244, 63, 94, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(244, 63, 94, 0.4);
+    border-color: rgba(244, 63, 94, 0.6);
+  }
+}
+```
+
+### Technische Indikatoren (Client-Side Berechnung)
+
+| Indikator | Bullish | Neutral | Bearish | Berechnung |
+|-----------|---------|---------|---------|------------|
+| RSI(14) | < 30 (oversold) | 30-70 | > 70 (overbought) | Client |
+| MACD | Bullish Cross | Flat | Bearish Cross | Client |
+| MACD Histogram | Rising | Flat | Falling | Client |
+| SMA 20 | Price Above | At | Price Below | Client |
+| SMA 50/200 | Golden Cross | - | Death Cross | Client |
+| EMA 12/26 | 12 > 26 | Equal | 12 < 26 | Client |
+| Bollinger Bands | Near Lower | Middle | Near Upper | Client |
+| Bollinger Width | Expanding | Normal | Squeezing | Client |
+| ADX | > 25 + Trend Up | < 20 | > 25 + Trend Down | Client |
+| Stochastic | < 20 | 20-80 | > 80 | Client |
+| Volume | > 150% avg | 80-150% | < 80% | Client |
+| OBV | Rising | Flat | Falling | Client |
+
+### Options-Metriken
+
+| Metrik | Bullish | Neutral | Bearish | Quelle |
+|--------|---------|---------|---------|--------|
+| Put/Call Ratio | < 0.7 | 0.7-1.0 | > 1.0 | Yahoo/Polygon |
+| Open Interest Δ | Calls ↑↑ | Flat | Puts ↑↑ | Yahoo/Polygon |
+| IV Rank | < 30% (cheap) | 30-70% | > 70% (expensive) | Yahoo/Polygon |
+| IV Percentile | < 30% | 30-70% | > 70% | Yahoo/Polygon |
+| Max Pain vs Price | Price < Max Pain | At Max Pain | Price > Max Pain | Polygon only |
+| Delta (Aggregate) | > 0.3 | -0.3 to 0.3 | < -0.3 | Polygon only |
+| Gamma Exposure | Positive | Neutral | Negative | Polygon only |
+
+### Aggregate Score
+
+```typescript
+interface AggregateScore {
+  bullishCount: number;
+  bearishCount: number;
+  neutralCount: number;
+  total: number;
+  percentage: number;        // 0-100
+  sentiment: 'bullish' | 'neutral' | 'bearish';
+  glowEffect: 'glow-bullish' | 'glow-bearish' | null;
+  label: string;             // "8/10 Bullish"
+}
+```
+
+### Komponenten-Architektur
+
+```
+src/components/analysis/
+├── TechnicalSignalsTable.tsx   # Haupttabelle mit allen Signalen
+├── SignalBadge.tsx             # 🟢🟡🔴 Badge Component
+├── IndicatorRow.tsx            # Einzelne Indikator-Zeile
+├── OptionsMetrics.tsx          # Options-spezifische Metriken
+└── AggregateScore.tsx          # Zusammenfassungs-Score
+
+src/utils/
+├── technicals.ts               # Alle Indikator-Berechnungen
+├── signals.ts                  # Wert → Signal Mapping
+└── optionsAnalysis.ts          # Options-Berechnungen
+
+src/services/api/
+├── alphavantage.ts             # Bestehend, erweitern
+├── yahoo.ts                    # NEU: Yahoo Finance (Options)
+└── polygon.ts                  # NEU: Premium API
+```
+
+---
+
+## 🤖 AI Analysis Architecture
+
+### Analysis Flow
+
+```
+User opens ticker
+        │
+        ▼
+┌─────────────────────────────┐
+│ AUTO: Technical Analysis    │  ← Free, instant, client-side
+│ RSI, MACD, SMA, etc.        │
+│ Aggregate Score shown       │
+└─────────────────────────────┘
+        │
+        ▼ (User clicks "Scope")
+┌─────────────────────────────┐
+│ PAID: AI Deep Analysis      │  ← Claude API call
+│ 3 Scenarios generated       │
+│ Cost shown before/after     │
+└─────────────────────────────┘
+```
+
+### Cost Model
+
+| Analysis Type | Cost | Time | Trigger |
+|--------------|------|------|---------|
+| Technical Analysis | Free | ~50ms | Automatic on load |
+| Quick Scan | ~$0.005 | ~2s | Manual ("Scope") |
+| Deep Dive | ~$0.02-0.04 | ~4s | Manual ("Scope") |
+
+### Prompt Strategy
+
+**Language:** English (better training data, more accurate financial terminology)
+
+**System Prompt:** Defines role, output format, constraints
+**User Prompt:** Dynamic data injection (price, technicals, news, options)
+
+### Response Format
+
+```typescript
+interface AIAnalysisResponse {
+  bull: Scenario;
+  bear: Scenario;
+  base: Scenario;
+  confidence: number;      // 0-100
+  reasoning: string;       // Methodology explanation
+}
+
+interface Scenario {
+  probability: number;     // Must sum to ~100% across all three
+  priceTarget: string;     // e.g., "+15% to +25%"
+  timeframe: string;       // e.g., "6-12 months"
+  title: string;           // Short, punchy
+  summary: string;         // 3-4 sentences
+  catalysts: string[];     // 3-4 key catalysts
+  risks: string[];         // 2-3 main risks
+}
+```
+
+### Data Storage
+
+Analysis history stored in Zustand + localStorage:
+- Max 10 analyses per ticker
+- Auto-expire after 30 days
+- Includes: input data, result, token usage, cost
+
+### Token Usage Tracking
+
+```typescript
+interface TokenUsage {
+  input: number;
+  output: number;
+  total: number;
+  cost: number;            // Calculated from model pricing
+}
+
+// Claude Sonnet pricing (as of 2025)
+const PRICING = {
+  input: 0.003,            // $3 per 1M tokens
+  output: 0.015,           // $15 per 1M tokens
+};
+```
+
+### UI Components
+
+| Component | Purpose |
+|-----------|---------|
+| `ScopeButton.tsx` | Main CTA, shows cost estimate |
+| `AnalysisHistory.tsx` | Past analyses list |
+| `ScenarioCard.tsx` | Individual scenario display |
+| `CostDisplay.tsx` | Token usage + cost breakdown |
+
+---
+
+## 🤖 Multi-AI Architecture
+
+### Intelligence Sources
+
+SpectraScope uses a "Master AI" architecture where Claude synthesizes intelligence from multiple specialized sources.
+
+```
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│    Grok     │  │ Perplexity  │  │  Finnhub    │  │  Technical  │
+│ (X/Twitter) │  │ (Research)  │  │   (News)    │  │  (Client)   │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │                │
+       └────────────────┴────────────────┴────────────────┘
+                                │
+                                ▼
+                   ┌─────────────────────┐
+                   │   Claude Master     │
+                   │   (Synthesizer)     │
+                   └──────────┬──────────┘
+                              │
+                              ▼
+                   ┌─────────────────────┐
+                   │  Final Analysis     │
+                   │  (3 Scenarios)      │
+                   └─────────────────────┘
+```
+
+| Source | Purpose | API | Status |
+|--------|---------|-----|--------|
+| **Claude** | Master Synthesizer | Anthropic | ✅ Required |
+| **Technical** | Indicators, Signals | Client-side | ✅ Always |
+| **Finnhub** | News Headlines | Finnhub | 🟡 Free Tier |
+| **Grok** | X/Twitter Sentiment | xAI | 🔮 Optional |
+| **Perplexity** | Web Research | Perplexity | 🔮 Optional |
+| **Polygon** | Options Flow | Polygon.io | 🔮 Premium |
+
+### Data Flow
+
+1. **Gather Phase**: Each enabled source fetches its specialty data
+2. **Normalize Phase**: All data converted to standard `IntelligenceReport` format
+3. **Synthesize Phase**: Claude receives all reports, generates scenarios
+4. **Present Phase**: User sees unified analysis with source attribution
+
+### Intelligence Report Interface
+
+```typescript
+interface IntelligenceReport {
+  source: IntelligenceSource;
+  timestamp: string;
+  confidence: number;     // 0-100
+  data: unknown;          // Source-specific data
+  summary: string;        // Human-readable summary
+}
+
+type IntelligenceSource =
+  | 'technical-analysis'  // Client-side computed
+  | 'news-sentiment'      // Finnhub
+  | 'social-sentiment'    // Grok (X/Twitter)
+  | 'web-research'        // Perplexity
+  | 'options-flow';       // Polygon
+```
+
+### Graceful Degradation
+
+If optional sources unavailable:
+- Analysis proceeds with available data
+- UI shows which sources contributed
+- Confidence score adjusts accordingly
+- Quality indicator reflects data completeness
+
+### Source Weighting
+
+Claude weighs sources based on reliability:
+- **Technical Analysis**: Reliable for timing signals
+- **News Sentiment**: Reliable for catalysts & events
+- **Social Sentiment**: Gauge retail interest (can be noisy)
+- **Web Research**: Context and fundamentals
+- **Options Flow**: Smart money positioning
+
+---
+
 ## 🔐 Sicherheit & API Key Management
 
 ### Sichere LocalStorage Wrapper

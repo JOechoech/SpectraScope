@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { WatchlistView, DetailView, SettingsView } from '@/views';
+import { WatchlistView, DetailView, SettingsView, SearchView } from '@/views';
 import { Navigation } from '@/components/layout';
 import type { Stock, ViewName } from '@/types';
 
@@ -75,6 +75,13 @@ export default function App() {
 
       {view === 'settings' && (
         <SettingsView onBack={handleBack} />
+      )}
+
+      {view === 'search' && (
+        <SearchView
+          onSelectStock={handleSelectStock}
+          onBack={handleBack}
+        />
       )}
 
       {/* Bottom Navigation */}
