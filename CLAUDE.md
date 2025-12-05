@@ -748,6 +748,87 @@ const PRICING = {
 
 ---
 
+## 🤖 Multi-AI Architecture
+
+### Intelligence Sources
+
+SpectraScope uses a "Master AI" architecture where Claude synthesizes intelligence from multiple specialized sources.
+
+```
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│    Grok     │  │ Perplexity  │  │  Finnhub    │  │  Technical  │
+│ (X/Twitter) │  │ (Research)  │  │   (News)    │  │  (Client)   │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │                │
+       └────────────────┴────────────────┴────────────────┘
+                                │
+                                ▼
+                   ┌─────────────────────┐
+                   │   Claude Master     │
+                   │   (Synthesizer)     │
+                   └──────────┬──────────┘
+                              │
+                              ▼
+                   ┌─────────────────────┐
+                   │  Final Analysis     │
+                   │  (3 Scenarios)      │
+                   └─────────────────────┘
+```
+
+| Source | Purpose | API | Status |
+|--------|---------|-----|--------|
+| **Claude** | Master Synthesizer | Anthropic | ✅ Required |
+| **Technical** | Indicators, Signals | Client-side | ✅ Always |
+| **Finnhub** | News Headlines | Finnhub | 🟡 Free Tier |
+| **Grok** | X/Twitter Sentiment | xAI | 🔮 Optional |
+| **Perplexity** | Web Research | Perplexity | 🔮 Optional |
+| **Polygon** | Options Flow | Polygon.io | 🔮 Premium |
+
+### Data Flow
+
+1. **Gather Phase**: Each enabled source fetches its specialty data
+2. **Normalize Phase**: All data converted to standard `IntelligenceReport` format
+3. **Synthesize Phase**: Claude receives all reports, generates scenarios
+4. **Present Phase**: User sees unified analysis with source attribution
+
+### Intelligence Report Interface
+
+```typescript
+interface IntelligenceReport {
+  source: IntelligenceSource;
+  timestamp: string;
+  confidence: number;     // 0-100
+  data: unknown;          // Source-specific data
+  summary: string;        // Human-readable summary
+}
+
+type IntelligenceSource =
+  | 'technical-analysis'  // Client-side computed
+  | 'news-sentiment'      // Finnhub
+  | 'social-sentiment'    // Grok (X/Twitter)
+  | 'web-research'        // Perplexity
+  | 'options-flow';       // Polygon
+```
+
+### Graceful Degradation
+
+If optional sources unavailable:
+- Analysis proceeds with available data
+- UI shows which sources contributed
+- Confidence score adjusts accordingly
+- Quality indicator reflects data completeness
+
+### Source Weighting
+
+Claude weighs sources based on reliability:
+- **Technical Analysis**: Reliable for timing signals
+- **News Sentiment**: Reliable for catalysts & events
+- **Social Sentiment**: Gauge retail interest (can be noisy)
+- **Web Research**: Context and fundamentals
+- **Options Flow**: Smart money positioning
+
+---
+
 ## 🔐 Sicherheit & API Key Management
 
 ### Sichere LocalStorage Wrapper

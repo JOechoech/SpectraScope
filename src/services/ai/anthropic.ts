@@ -429,3 +429,242 @@ export function getTokenCost(inputTokens: number, outputTokens: number): number 
     (outputTokens / 1000) * OUTPUT_COST_PER_1K
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MULTI-AI MASTER SYNTHESIZER
+// ═══════════════════════════════════════════════════════════════════════════
+
+import type {
+  AggregatedIntelligence,
+  IntelligenceSource,
+} from '@/types/intelligence';
+
+/**
+ * Master System Prompt for Multi-Source Synthesis
+ *
+ * Claude acts as the "Master Analyst" synthesizing intelligence
+ * from multiple specialized sources.
+ */
+const MASTER_SYSTEM_PROMPT = `You are the Master Analyst at SpectraScope, synthesizing intelligence from multiple sources into coherent investment scenarios.
+
+You will receive intelligence reports from various sources:
+- Technical Analysis (always present, computed client-side)
+- News Sentiment (financial news headlines - if available)
+- Social Sentiment (Twitter/X via Grok - if available)
+- Web Research (Perplexity findings - if available)
+- Options Flow (institutional positioning - if available)
+
+YOUR RESPONSIBILITIES:
+
+1. WEIGH sources appropriately:
+   - Technical analysis: Reliable for timing signals
+   - News: Reliable for catalysts and events
+   - Social sentiment: Gauge retail interest (can be noisy)
+   - Research: Context and fundamentals
+   - Options: Smart money positioning
+
+2. IDENTIFY conflicts between sources and explain them:
+   Example: "Social sentiment is euphoric (+0.8) while RSI shows overbought (78).
+   This divergence suggests potential near-term pullback despite retail enthusiasm."
+
+3. ATTRIBUTE insights to sources:
+   Example: "According to recent news coverage...", "Technical indicators suggest...",
+   "Retail sentiment on Twitter indicates..."
+
+4. ADJUST confidence based on available sources:
+   - All 5 sources: High confidence possible (80-95)
+   - 3-4 sources: Medium-high confidence (65-85)
+   - 2 sources: Medium confidence (50-70)
+   - Technical only: Lower confidence (40-60), note limitations
+
+5. NOTE data limitations in your reasoning:
+   If sources are missing, acknowledge what you don't know.
+
+OUTPUT FORMAT: Valid JSON only, no markdown formatting.
+
+JSON Structure:
+{
+  "bull": { "probability": number, "priceTarget": string, "timeframe": string, "title": string, "summary": string, "catalysts": string[], "risks": string[] },
+  "bear": { "probability": number, "priceTarget": string, "timeframe": string, "title": string, "summary": string, "catalysts": string[], "risks": string[] },
+  "base": { "probability": number, "priceTarget": string, "timeframe": string, "title": string, "summary": string, "catalysts": string[], "risks": string[] },
+  "confidence": number,
+  "reasoning": string,
+  "sourcesUsed": string[]
+}`;
+
+/**
+ * Build multi-source prompt from aggregated intelligence
+ */
+function buildMultiSourcePrompt(intelligence: AggregatedIntelligence): string {
+  const { symbol, companyName, reports, availableSources, missingSources } = intelligence;
+
+  let prompt = `Analyze **${symbol}**${companyName ? ` (${companyName})` : ''} using the following intelligence:\n\n`;
+
+  prompt += `═══════════════════════════════════════════════════════════════\n`;
+  prompt += `DATA AVAILABILITY\n`;
+  prompt += `═══════════════════════════════════════════════════════════════\n`;
+  prompt += `Available Sources: ${availableSources.map(s => getSourceDisplayNameLocal(s)).join(', ')}\n`;
+  prompt += `Missing Sources: ${missingSources.length > 0 ? missingSources.map(s => getSourceDisplayNameLocal(s)).join(', ') : 'None'}\n`;
+  prompt += `Data Quality: ${intelligence.dataQuality.label} (${intelligence.dataQuality.score}%)\n\n`;
+
+  // Add each report
+  for (const report of reports) {
+    prompt += `═══════════════════════════════════════════════════════════════\n`;
+    prompt += `SOURCE: ${getSourceDisplayNameLocal(report.source).toUpperCase()}\n`;
+    prompt += `═══════════════════════════════════════════════════════════════\n`;
+    prompt += `Confidence: ${report.confidence}%\n`;
+    prompt += `Summary: ${report.summary}\n\n`;
+    prompt += `Data:\n${JSON.stringify(report.data, null, 2)}\n\n`;
+  }
+
+  prompt += `═══════════════════════════════════════════════════════════════\n`;
+  prompt += `TASK\n`;
+  prompt += `═══════════════════════════════════════════════════════════════\n`;
+  prompt += `Generate Bull/Bear/Base scenarios as JSON.\n`;
+  prompt += `- Weigh each source appropriately\n`;
+  prompt += `- Note conflicts between sources\n`;
+  prompt += `- Attribute key insights to their sources\n`;
+  prompt += `- Adjust confidence based on data completeness\n`;
+
+  return prompt;
+}
+
+/**
+ * Local helper to avoid circular import
+ */
+function getSourceDisplayNameLocal(source: IntelligenceSource): string {
+  const names: Record<IntelligenceSource, string> = {
+    'technical-analysis': 'Technical Analysis',
+    'news-sentiment': 'News Sentiment',
+    'social-sentiment': 'Social Sentiment',
+    'web-research': 'Web Research',
+    'options-flow': 'Options Flow',
+  };
+  return names[source];
+}
+
+/**
+ * Synthesize scenarios from multi-source intelligence
+ *
+ * This is the main function for the Multi-AI architecture where
+ * Claude acts as the Master Synthesizer.
+ */
+export async function synthesizeFromIntelligence(
+  intelligence: AggregatedIntelligence,
+  apiKey: string
+): Promise<DeepDiveResult> {
+  const client = new Anthropic({
+    apiKey,
+    dangerouslyAllowBrowser: true,
+  });
+
+  const userPrompt = buildMultiSourcePrompt(intelligence);
+
+  try {
+    const response = await client.messages.create({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system: MASTER_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+    });
+
+    // Extract text content
+    const textContent = response.content.find((c) => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text response received from Claude');
+    }
+
+    // Parse JSON from response
+    const jsonText = textContent.text.trim();
+    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+
+    if (!jsonMatch) {
+      throw new Error('Could not extract JSON from response');
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // Validate and normalize probabilities
+    const totalProb =
+      parsed.bull.probability + parsed.bear.probability + parsed.base.probability;
+    if (totalProb < 90 || totalProb > 110) {
+      const factor = 100 / totalProb;
+      parsed.bull.probability = Math.round(parsed.bull.probability * factor);
+      parsed.bear.probability = Math.round(parsed.bear.probability * factor);
+      parsed.base.probability =
+        100 - parsed.bull.probability - parsed.bear.probability;
+    }
+
+    // Calculate token usage and cost
+    const inputTokens = response.usage?.input_tokens || 0;
+    const outputTokens = response.usage?.output_tokens || 0;
+    const cost = getTokenCost(inputTokens, outputTokens);
+
+    // Determine sentiment from reports
+    const newsReport = intelligence.reports.find(r => r.source === 'news-sentiment');
+    const newsSentiment = newsReport?.data?.overallSentiment || 'neutral';
+
+    const socialReport = intelligence.reports.find(r => r.source === 'social-sentiment');
+    const socialScore = (socialReport?.data as { sentimentScore?: number } | undefined)?.sentimentScore ?? 0;
+    const socialSentiment = socialScore > 0.2
+      ? 'bullish'
+      : socialScore < -0.2
+        ? 'bearish'
+        : 'mixed';
+
+    const optionsReport = intelligence.reports.find(r => r.source === 'options-flow');
+    const optionsFlow = optionsReport?.data?.institutionalFlow || 'balanced';
+
+    // Build result
+    const result: DeepDiveResult = {
+      timestamp: new Date().toISOString(),
+      type: 'deep',
+      symbol: intelligence.symbol,
+      scenarios: {
+        bull: normalizeScenarioMulti(parsed.bull, 'Bull Case'),
+        bear: normalizeScenarioMulti(parsed.bear, 'Bear Case'),
+        base: normalizeScenarioMulti(parsed.base, 'Base Case'),
+      },
+      sentiment: {
+        news: newsSentiment as 'positive' | 'neutral' | 'negative',
+        social: socialSentiment as 'bullish' | 'mixed' | 'bearish',
+        options: optionsFlow as 'call-heavy' | 'balanced' | 'put-heavy',
+      },
+      confidence: Math.min(100, Math.max(0, parsed.confidence || 70)),
+      reasoning: parsed.reasoning || 'Analysis synthesized from available intelligence sources.',
+      tokenUsage: {
+        input: inputTokens,
+        output: outputTokens,
+        cost: Math.round(cost * 10000) / 10000,
+      },
+    };
+
+    return result;
+  } catch (error) {
+    if (error instanceof Anthropic.APIError) {
+      if (error.status === 401) {
+        throw new Error('Invalid API key. Please check your Anthropic API key in settings.');
+      }
+      if (error.status === 429) {
+        throw new Error('API rate limit reached. Please wait a moment and try again.');
+      }
+      if (error.status === 500) {
+        throw new Error('Anthropic server temporarily unavailable. Please try again later.');
+      }
+    }
+    throw error;
+  }
+}
+
+function normalizeScenarioMulti(raw: unknown, defaultTitle: string): Scenario {
+  const scenario = raw as Record<string, unknown>;
+  return {
+    probability: typeof scenario.probability === 'number' ? scenario.probability : 33,
+    priceTarget: typeof scenario.priceTarget === 'string' ? scenario.priceTarget : 'N/A',
+    timeframe: typeof scenario.timeframe === 'string' ? scenario.timeframe : '6-12 months',
+    title: typeof scenario.title === 'string' ? scenario.title : defaultTitle,
+    summary: typeof scenario.summary === 'string' ? scenario.summary : 'No summary available.',
+    catalysts: Array.isArray(scenario.catalysts) ? (scenario.catalysts as string[]).slice(0, 4) : [],
+    risks: Array.isArray(scenario.risks) ? (scenario.risks as string[]).slice(0, 3) : [],
+  };
+}
