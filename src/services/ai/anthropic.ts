@@ -1,23 +1,24 @@
 /**
  * Anthropic Claude API Service
- * 
+ *
  * Handles AI-powered scenario generation for the Deep Dive analysis.
- * 
+ *
  * Model: Claude Sonnet 4 (claude-sonnet-4-20250514)
- * 
+ *
  * Token Costs (as of 2025):
  * - Input: $3 per 1M tokens
  * - Output: $15 per 1M tokens
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { 
-  DeepDiveResult, 
-  Scenario, 
-  StockQuote, 
+import type {
+  DeepDiveResult,
+  Scenario,
+  StockQuote,
   TechnicalIndicators,
-  NewsItem 
+  NewsItem,
 } from '@/types';
+import type { AggregateScore } from '@/utils/signals';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -26,93 +27,171 @@ import type {
 const MODEL = 'claude-sonnet-4-20250514';
 const MAX_TOKENS = 2500;
 
-// Token cost estimation (USD)
+// Token cost estimation (USD per 1K tokens)
 const INPUT_COST_PER_1K = 0.003;
 const OUTPUT_COST_PER_1K = 0.015;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PROMPT TEMPLATES
+// ENGLISH PROMPT TEMPLATES
 // ═══════════════════════════════════════════════════════════════════════════
 
-const SYSTEM_PROMPT = `Du bist ein erfahrener Finanzanalyst mit Expertise in fundamentaler und technischer Analyse. Deine Analysen sind präzise, datengestützt und berücksichtigen sowohl quantitative als auch qualitative Faktoren.
+const SYSTEM_PROMPT = `You are an experienced financial analyst with expertise in both fundamental and technical analysis. Your analyses are precise, data-driven, and consider both quantitative and qualitative factors.
 
-Deine Aufgabe ist es, drei realistische Szenarien für eine Aktie zu erstellen:
+Your task is to create three realistic scenarios for a stock:
 
-1. **Bull Case (Optimistisch)**: Das beste realistische Szenario basierend auf positiven aber plausiblen Entwicklungen
-2. **Bear Case (Pessimistisch)**: Das schlechteste realistische Szenario basierend auf negativen aber plausiblen Entwicklungen
-3. **Base Case (Basis)**: Das wahrscheinlichste Szenario bei normalem Geschäftsverlauf
+1. **Bull Case (Optimistic)**: The best realistic scenario based on positive but plausible developments
+2. **Bear Case (Pessimistic)**: The worst realistic scenario based on negative but plausible developments
+3. **Base Case (Neutral)**: The most likely scenario assuming normal business operations
 
-Für jedes Szenario liefere:
-- probability: Wahrscheinlichkeit in % (alle drei müssen sich auf ~100% summieren)
-- priceTarget: Preisziel als Prozent-Range (z.B. "+15% bis +25%" oder "-10% bis -18%")
-- timeframe: Zeitrahmen (z.B. "6-12 Monate")
-- title: Kurzer Titel (z.B. "Optimistisches Szenario")
-- summary: Ausführliche Zusammenfassung (3-4 Sätze) mit konkreten Begründungen
-- catalysts: Array von 3-4 Schlüssel-Katalysatoren
-- risks: Array von 2-3 Hauptrisiken für dieses Szenario
+For each scenario provide:
+- probability: Percentage (all three must sum to ~100%)
+- priceTarget: Target as percentage range (e.g., "+15% to +25%" or "-10% to -18%")
+- timeframe: Time horizon (e.g., "6-12 months")
+- title: Short, punchy title
+- summary: 3-4 sentences with concrete reasoning
+- catalysts: Array of 3-4 key catalysts
+- risks: Array of 2-3 main risks for this scenario
 
-Zusätzlich liefere:
-- confidence: Deine Konfidenz in der Analyse (0-100)
-- reasoning: Kurze Erläuterung deiner Methodik
+Additionally provide:
+- confidence: Your confidence in this analysis (0-100)
+- reasoning: Brief explanation of your methodology
 
-WICHTIG: Antworte NUR mit validem JSON, ohne Markdown-Formatierung oder zusätzlichen Text.`;
+CRITICAL: Respond ONLY with valid JSON, no markdown formatting or additional text.`;
+
+interface CompanyInfo {
+  name: string;
+  sector: string;
+  industry?: string;
+  marketCap: string;
+}
+
+interface OptionsData {
+  putCallRatio: number;
+  ivRank: number;
+  oiTrend: 'bullish' | 'bearish' | 'neutral';
+}
+
+function formatVolume(volume: number): string {
+  if (volume >= 1_000_000_000) {
+    return `${(volume / 1_000_000_000).toFixed(2)}B`;
+  }
+  if (volume >= 1_000_000) {
+    return `${(volume / 1_000_000).toFixed(2)}M`;
+  }
+  if (volume >= 1_000) {
+    return `${(volume / 1_000).toFixed(1)}K`;
+  }
+  return volume.toString();
+}
 
 function buildUserPrompt(
   symbol: string,
   quote: StockQuote,
   technicals: TechnicalIndicators,
+  aggregateScore: AggregateScore,
   news: NewsItem[],
-  companyInfo?: { name: string; sector: string; marketCap: string }
+  options?: OptionsData,
+  companyInfo?: CompanyInfo
 ): string {
-  const newsSection = news.length > 0
-    ? `**Aktuelle Nachrichten:**
-${news.slice(0, 5).map((n, i) => `${i + 1}. ${n.headline} (Sentiment: ${n.sentiment})`).join('\n')}`
-    : '**Aktuelle Nachrichten:** Keine aktuellen Nachrichten verfügbar.';
+  const optionsSection = options
+    ? `
+═══════════════════════════════════════════════════════════════
+OPTIONS DATA
+═══════════════════════════════════════════════════════════════
+- Put/Call Ratio: ${options.putCallRatio.toFixed(2)}
+- IV Rank: ${options.ivRank}%
+- Open Interest Trend: ${options.oiTrend}
+`
+    : '';
 
-  return `Analysiere die Aktie **${symbol}** (${companyInfo?.name || 'Unbekannt'}) und erstelle die drei Szenarien.
+  const companySection = companyInfo
+    ? `
+═══════════════════════════════════════════════════════════════
+COMPANY PROFILE
+═══════════════════════════════════════════════════════════════
+- Sector: ${companyInfo.sector}
+- Industry: ${companyInfo.industry || 'Unknown'}
+- Market Cap: ${companyInfo.marketCap}
+`
+    : '';
 
-**Aktuelle Kursdaten:**
-- Aktueller Kurs: $${quote.price.toFixed(2)}
-- Tagesveränderung: ${quote.change >= 0 ? '+' : ''}${quote.change.toFixed(2)} (${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toFixed(2)}%)
-- Tageshoch: $${quote.high.toFixed(2)}
-- Tagestief: $${quote.low.toFixed(2)}
-- Volumen: ${(quote.volume / 1000000).toFixed(2)}M
+  return `
+Analyze **${symbol}** (${companyInfo?.name || 'Unknown'})
 
-**Technische Indikatoren:**
-- RSI (14): ${technicals.rsi.toFixed(1)} (${technicals.rsiSignal})
-- MACD: ${technicals.macd.toFixed(3)} (Signal: ${technicals.macdSignal.toFixed(3)}, Histogram: ${technicals.macdHistogram.toFixed(3)})
-- Trend: ${technicals.macdTrend}
-- Kurs vs. SMA 20: ${technicals.sma20Above ? 'Darüber' : 'Darunter'} ($${technicals.sma20.toFixed(2)})
-- Kurs vs. SMA 50: ${technicals.sma50Above ? 'Darüber' : 'Darunter'} ($${technicals.sma50.toFixed(2)})
+═══════════════════════════════════════════════════════════════
+PRICE DATA
+═══════════════════════════════════════════════════════════════
+- Current Price: $${quote.price.toFixed(2)}
+- Daily Change: ${quote.change >= 0 ? '+' : ''}${quote.change.toFixed(2)} (${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toFixed(2)}%)
+- Day Range: $${quote.low.toFixed(2)} - $${quote.high.toFixed(2)}
+- Volume: ${formatVolume(quote.volume)}
 
-${newsSection}
+═══════════════════════════════════════════════════════════════
+TECHNICAL ANALYSIS (Pre-computed)
+═══════════════════════════════════════════════════════════════
+Aggregate Signal: ${aggregateScore.label} (${aggregateScore.percentage}% bullish)
 
-${companyInfo ? `**Unternehmensdaten:**
-- Sektor: ${companyInfo.sector}
-- Marktkapitalisierung: $${companyInfo.marketCap}` : ''}
+Individual Signals:
+- RSI(14): ${technicals.rsi.toFixed(1)} → ${technicals.rsiSignal}
+- MACD: ${technicals.macd.toFixed(3)} (Signal: ${technicals.macdSignal.toFixed(3)}) → ${technicals.macdTrend}
+- Price vs SMA20: ${technicals.sma20Above ? 'Above' : 'Below'} ($${technicals.sma20.toFixed(2)})
+- Price vs SMA50: ${technicals.sma50Above ? 'Above' : 'Below'} ($${technicals.sma50.toFixed(2)})
+- Volume vs Avg: ${aggregateScore.percentage >= 50 ? 'Above average' : 'Normal'}
+${optionsSection}
+═══════════════════════════════════════════════════════════════
+RECENT NEWS
+═══════════════════════════════════════════════════════════════
+${
+  news.length > 0
+    ? news
+        .slice(0, 5)
+        .map((n, i) => `${i + 1}. ${n.headline} [${n.sentiment}]`)
+        .join('\n')
+    : 'No recent news available.'
+}
+${companySection}
+═══════════════════════════════════════════════════════════════
 
-Erstelle jetzt die drei Szenarien als JSON-Objekt mit der folgenden Struktur:
+Generate the three scenarios as a JSON object with the following structure:
 {
   "bull": { "probability": number, "priceTarget": string, "timeframe": string, "title": string, "summary": string, "catalysts": string[], "risks": string[] },
   "bear": { "probability": number, "priceTarget": string, "timeframe": string, "title": string, "summary": string, "catalysts": string[], "risks": string[] },
   "base": { "probability": number, "priceTarget": string, "timeframe": string, "title": string, "summary": string, "catalysts": string[], "risks": string[] },
   "confidence": number,
   "reasoning": string
-}`;
+}
+`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════
 
+export interface GenerateScenariosParams {
+  symbol: string;
+  quote: StockQuote;
+  technicals: TechnicalIndicators;
+  aggregateScore: AggregateScore;
+  news: NewsItem[];
+  apiKey: string;
+  options?: OptionsData;
+  companyInfo?: CompanyInfo;
+}
+
 export async function generateScenarios(
-  symbol: string,
-  quote: StockQuote,
-  technicals: TechnicalIndicators,
-  news: NewsItem[],
-  apiKey: string,
-  companyInfo?: { name: string; sector: string; marketCap: string }
+  params: GenerateScenariosParams
 ): Promise<DeepDiveResult> {
+  const {
+    symbol,
+    quote,
+    technicals,
+    aggregateScore,
+    news,
+    apiKey,
+    options,
+    companyInfo,
+  } = params;
+
   // Initialize Anthropic client
   // Note: dangerouslyAllowBrowser is needed for client-side usage
   // In production, consider proxying through a backend
@@ -121,16 +200,22 @@ export async function generateScenarios(
     dangerouslyAllowBrowser: true,
   });
 
-  const userPrompt = buildUserPrompt(symbol, quote, technicals, news, companyInfo);
+  const userPrompt = buildUserPrompt(
+    symbol,
+    quote,
+    technicals,
+    aggregateScore,
+    news,
+    options,
+    companyInfo
+  );
 
   try {
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
-      messages: [
-        { role: 'user', content: userPrompt }
-      ],
+      messages: [{ role: 'user', content: userPrompt }],
     });
 
     // Extract text content
@@ -142,7 +227,7 @@ export async function generateScenarios(
     // Parse JSON from response
     const jsonText = textContent.text.trim();
     const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-    
+
     if (!jsonMatch) {
       throw new Error('Could not extract JSON from response');
     }
@@ -150,20 +235,23 @@ export async function generateScenarios(
     const parsed = JSON.parse(jsonMatch[0]);
 
     // Validate and normalize probabilities
-    const totalProb = parsed.bull.probability + parsed.bear.probability + parsed.base.probability;
+    const totalProb =
+      parsed.bull.probability + parsed.bear.probability + parsed.base.probability;
     if (totalProb < 90 || totalProb > 110) {
       // Normalize to 100%
       const factor = 100 / totalProb;
       parsed.bull.probability = Math.round(parsed.bull.probability * factor);
       parsed.bear.probability = Math.round(parsed.bear.probability * factor);
-      parsed.base.probability = 100 - parsed.bull.probability - parsed.bear.probability;
+      parsed.base.probability =
+        100 - parsed.bull.probability - parsed.bear.probability;
     }
 
     // Calculate token usage and cost
     const inputTokens = response.usage?.input_tokens || 0;
     const outputTokens = response.usage?.output_tokens || 0;
-    const cost = (inputTokens / 1000 * INPUT_COST_PER_1K) + 
-                 (outputTokens / 1000 * OUTPUT_COST_PER_1K);
+    const cost =
+      (inputTokens / 1000) * INPUT_COST_PER_1K +
+      (outputTokens / 1000) * OUTPUT_COST_PER_1K;
 
     // Build result
     const result: DeepDiveResult = {
@@ -171,9 +259,9 @@ export async function generateScenarios(
       type: 'deep',
       symbol,
       scenarios: {
-        bull: normalizeScenario(parsed.bull, 'Optimistisches Szenario'),
-        bear: normalizeScenario(parsed.bear, 'Pessimistisches Szenario'),
-        base: normalizeScenario(parsed.base, 'Basis-Szenario'),
+        bull: normalizeScenario(parsed.bull, 'Bull Case'),
+        bear: normalizeScenario(parsed.bear, 'Bear Case'),
+        base: normalizeScenario(parsed.base, 'Base Case'),
       },
       sentiment: {
         news: determineSentiment(news),
@@ -181,7 +269,9 @@ export async function generateScenarios(
         options: 'balanced', // Would need options API
       },
       confidence: Math.min(100, Math.max(0, parsed.confidence || 70)),
-      reasoning: parsed.reasoning || 'Analyse basiert auf technischen Indikatoren und aktuellen Marktdaten.',
+      reasoning:
+        parsed.reasoning ||
+        'Analysis based on technical indicators and current market data.',
       tokenUsage: {
         input: inputTokens,
         output: outputTokens,
@@ -190,17 +280,22 @@ export async function generateScenarios(
     };
 
     return result;
-
   } catch (error) {
     if (error instanceof Anthropic.APIError) {
       if (error.status === 401) {
-        throw new Error('Ungültiger API-Schlüssel. Bitte überprüfe deinen Anthropic API-Key in den Einstellungen.');
+        throw new Error(
+          'Invalid API key. Please check your Anthropic API key in settings.'
+        );
       }
       if (error.status === 429) {
-        throw new Error('API-Ratenlimit erreicht. Bitte warte einen Moment und versuche es erneut.');
+        throw new Error(
+          'API rate limit reached. Please wait a moment and try again.'
+        );
       }
       if (error.status === 500) {
-        throw new Error('Anthropic-Server vorübergehend nicht erreichbar. Bitte versuche es später erneut.');
+        throw new Error(
+          'Anthropic server temporarily unavailable. Please try again later.'
+        );
       }
     }
     throw error;
@@ -208,34 +303,87 @@ export async function generateScenarios(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// LEGACY FUNCTION (for backward compatibility)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function generateScenariosLegacy(
+  symbol: string,
+  quote: StockQuote,
+  technicals: TechnicalIndicators,
+  news: NewsItem[],
+  apiKey: string,
+  companyInfo?: { name: string; sector: string; marketCap: string }
+): Promise<DeepDiveResult> {
+  // Create a default aggregate score for legacy calls
+  const defaultAggregateScore: AggregateScore = {
+    bullishCount: 0,
+    bearishCount: 0,
+    neutralCount: 0,
+    total: 0,
+    percentage: 50,
+    sentiment: 'neutral',
+    glowEffect: null,
+    label: 'Neutral',
+  };
+
+  return generateScenarios({
+    symbol,
+    quote,
+    technicals,
+    aggregateScore: defaultAggregateScore,
+    news,
+    apiKey,
+    companyInfo,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function normalizeScenario(raw: any, defaultTitle: string): Scenario {
+function normalizeScenario(raw: unknown, defaultTitle: string): Scenario {
+  const scenario = raw as Record<string, unknown>;
   return {
-    probability: typeof raw.probability === 'number' ? raw.probability : 33,
-    priceTarget: raw.priceTarget || 'N/A',
-    timeframe: raw.timeframe || '6-12 Monate',
-    title: raw.title || defaultTitle,
-    summary: raw.summary || 'Keine Zusammenfassung verfügbar.',
-    catalysts: Array.isArray(raw.catalysts) ? raw.catalysts.slice(0, 4) : [],
-    risks: Array.isArray(raw.risks) ? raw.risks.slice(0, 3) : [],
+    probability:
+      typeof scenario.probability === 'number' ? scenario.probability : 33,
+    priceTarget:
+      typeof scenario.priceTarget === 'string' ? scenario.priceTarget : 'N/A',
+    timeframe:
+      typeof scenario.timeframe === 'string'
+        ? scenario.timeframe
+        : '6-12 months',
+    title: typeof scenario.title === 'string' ? scenario.title : defaultTitle,
+    summary:
+      typeof scenario.summary === 'string'
+        ? scenario.summary
+        : 'No summary available.',
+    catalysts: Array.isArray(scenario.catalysts)
+      ? (scenario.catalysts as string[]).slice(0, 4)
+      : [],
+    risks: Array.isArray(scenario.risks)
+      ? (scenario.risks as string[]).slice(0, 3)
+      : [],
   };
 }
 
-function determineSentiment(news: NewsItem[]): 'positive' | 'neutral' | 'negative' {
+function determineSentiment(
+  news: NewsItem[]
+): 'positive' | 'neutral' | 'negative' {
   if (news.length === 0) return 'neutral';
-  
+
   const scores = news.map((n) => {
     switch (n.sentiment) {
-      case 'positive': return 1;
-      case 'negative': return -1;
-      default: return 0;
+      case 'positive':
+        return 1;
+      case 'negative':
+        return -1;
+      default:
+        return 0;
     }
   });
-  
+
   const avg = scores.reduce<number>((a, b) => a + b, 0) / scores.length;
-  
+
   if (avg > 0.3) return 'positive';
   if (avg < -0.3) return 'negative';
   return 'neutral';
@@ -245,14 +393,19 @@ function determineSentiment(news: NewsItem[]): 'positive' | 'neutral' | 'negativ
 // COST ESTIMATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function estimateAnalysisCost(): { min: number; max: number; avg: number } {
+export function estimateAnalysisCost(): {
+  min: number;
+  max: number;
+  avg: number;
+} {
   // Based on typical prompt and response sizes
-  const avgInputTokens = 800;
+  const avgInputTokens = 1200;
   const avgOutputTokens = 1500;
-  
-  const avgCost = (avgInputTokens / 1000 * INPUT_COST_PER_1K) + 
-                  (avgOutputTokens / 1000 * OUTPUT_COST_PER_1K);
-  
+
+  const avgCost =
+    (avgInputTokens / 1000) * INPUT_COST_PER_1K +
+    (avgOutputTokens / 1000) * OUTPUT_COST_PER_1K;
+
   return {
     min: avgCost * 0.7,
     max: avgCost * 1.5,
@@ -261,8 +414,18 @@ export function estimateAnalysisCost(): { min: number; max: number; avg: number 
 }
 
 export function formatCost(cost: number): string {
+  if (cost < 0.001) {
+    return '< $0.001';
+  }
   if (cost < 0.01) {
-    return `< $0.01`;
+    return `$${cost.toFixed(4)}`;
   }
   return `$${cost.toFixed(3)}`;
+}
+
+export function getTokenCost(inputTokens: number, outputTokens: number): number {
+  return (
+    (inputTokens / 1000) * INPUT_COST_PER_1K +
+    (outputTokens / 1000) * OUTPUT_COST_PER_1K
+  );
 }
