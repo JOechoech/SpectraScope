@@ -1,45 +1,53 @@
 /**
  * News Intelligence Service
  *
- * Fetches and analyzes news sentiment from Finnhub API.
- * Requires Finnhub API key.
+ * Fetches and analyzes news sentiment from NewsAPI.
+ * Requires NewsAPI key.
  */
 
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
+import { getStockNews, getNewsSentimentScore, type NewsArticle } from '@/services/api/newsapi';
 import type { NewsReport, NewsReportData, NewsHeadline } from '@/types/intelligence';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FINNHUB API
+// COMPANY NAME MAPPING
 // ═══════════════════════════════════════════════════════════════════════════
 
-const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
+const companyNames: Record<string, string> = {
+  AAPL: 'Apple',
+  MSFT: 'Microsoft',
+  GOOGL: 'Google Alphabet',
+  AMZN: 'Amazon',
+  NVDA: 'NVIDIA',
+  META: 'Meta Facebook',
+  TSLA: 'Tesla',
+  'BRK.B': 'Berkshire Hathaway',
+  JPM: 'JPMorgan Chase',
+  V: 'Visa',
+  JNJ: 'Johnson & Johnson',
+  WMT: 'Walmart',
+  PG: 'Procter & Gamble',
+  MA: 'Mastercard',
+  UNH: 'UnitedHealth',
+  HD: 'Home Depot',
+  DIS: 'Disney',
+  BAC: 'Bank of America',
+  XOM: 'Exxon Mobil',
+  NFLX: 'Netflix',
+  AMD: 'AMD Advanced Micro Devices',
+  INTC: 'Intel',
+  CRM: 'Salesforce',
+  ADBE: 'Adobe',
+  PYPL: 'PayPal',
+  COST: 'Costco',
+  PEP: 'PepsiCo',
+  KO: 'Coca-Cola',
+  NKE: 'Nike',
+  MCD: 'McDonald\'s',
+};
 
-interface FinnhubNewsItem {
-  id: number;
-  category: string;
-  datetime: number;
-  headline: string;
-  image: string;
-  related: string;
-  source: string;
-  summary: string;
-  url: string;
-}
-
-interface FinnhubSentiment {
-  buzz: {
-    articlesInLastWeek: number;
-    buzz: number;
-    weeklyAverage: number;
-  };
-  companyNewsScore: number;
-  sectorAverageBullishPercent: number;
-  sectorAverageNewsScore: number;
-  sentiment: {
-    bearishPercent: number;
-    bullishPercent: number;
-  };
-  symbol: string;
+function getCompanyName(symbol: string): string {
+  return companyNames[symbol] || symbol;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -47,41 +55,45 @@ interface FinnhubSentiment {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Gather news intelligence from Finnhub
+ * Gather news intelligence from NewsAPI
  *
  * @param symbol - Stock symbol
+ * @param companyName - Optional company name for better search results
  * @returns News intelligence report or null if unavailable
  */
 export async function gatherNewsIntelligence(
-  symbol: string
+  symbol: string,
+  companyName?: string
 ): Promise<NewsReport | null> {
   try {
-    const apiKey = useApiKeysStore.getState().getApiKey('finnhub');
+    const apiKey = useApiKeysStore.getState().getApiKey('newsapi');
 
     if (!apiKey) {
-      console.warn('[News] No Finnhub API key configured');
+      console.warn('[News] No NewsAPI key configured');
       return null;
     }
 
-    // Fetch news and sentiment in parallel
-    const [newsItems, sentiment] = await Promise.all([
-      fetchCompanyNews(symbol, apiKey),
-      fetchNewsSentiment(symbol, apiKey),
-    ]);
+    const company = companyName || getCompanyName(symbol);
 
-    if (!newsItems || newsItems.length === 0) {
+    // Fetch news from NewsAPI
+    const articles = await getStockNews(symbol, company, apiKey);
+
+    if (!articles || articles.length === 0) {
       console.warn(`[News] No news found for ${symbol}`);
       return createEmptyReport(symbol);
     }
 
     // Process headlines
-    const headlines = processHeadlines(newsItems);
+    const headlines = processHeadlines(articles);
 
     // Calculate overall sentiment
-    const { overallSentiment, sentimentScore } = calculateOverallSentiment(
-      headlines,
-      sentiment
-    );
+    const sentimentResult = getNewsSentimentScore(articles);
+    const overallSentiment: NewsReportData['overallSentiment'] =
+      sentimentResult.label === 'bullish'
+        ? 'bullish'
+        : sentimentResult.label === 'bearish'
+        ? 'bearish'
+        : 'neutral';
 
     // Get top sources
     const topSources = getTopSources(headlines);
@@ -90,18 +102,18 @@ export async function gatherNewsIntelligence(
     const data: NewsReportData = {
       headlines,
       overallSentiment,
-      sentimentScore,
+      sentimentScore: sentimentResult.score,
       articleCount: headlines.length,
       topSources,
     };
 
     // Generate summary
-    const summary = generateNewsSummary(symbol, data, sentiment);
+    const summary = generateNewsSummary(symbol, data, sentimentResult.breakdown);
 
     return {
       source: 'news-sentiment',
       timestamp: new Date().toISOString(),
-      confidence: calculateNewsConfidence(data, sentiment),
+      confidence: calculateNewsConfidence(data),
       data,
       summary,
     };
@@ -112,125 +124,20 @@ export async function gatherNewsIntelligence(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// API CALLS
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function fetchCompanyNews(
-  symbol: string,
-  apiKey: string
-): Promise<FinnhubNewsItem[]> {
-  const toDate = new Date();
-  const fromDate = new Date();
-  fromDate.setDate(fromDate.getDate() - 7); // Last 7 days
-
-  const from = fromDate.toISOString().split('T')[0];
-  const to = toDate.toISOString().split('T')[0];
-
-  const url = `${FINNHUB_BASE_URL}/company-news?symbol=${symbol}&from=${from}&to=${to}&token=${apiKey}`;
-
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Finnhub API error: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-async function fetchNewsSentiment(
-  symbol: string,
-  apiKey: string
-): Promise<FinnhubSentiment | null> {
-  try {
-    const url = `${FINNHUB_BASE_URL}/news-sentiment?symbol=${symbol}&token=${apiKey}`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      return null;
-    }
-
-    return response.json();
-  } catch {
-    return null;
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // PROCESSING FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function processHeadlines(newsItems: FinnhubNewsItem[]): NewsHeadline[] {
-  return newsItems
+function processHeadlines(articles: NewsArticle[]): NewsHeadline[] {
+  return articles
     .slice(0, 10) // Take top 10 most recent
-    .map((item) => ({
-      title: item.headline,
-      source: item.source,
-      url: item.url,
-      publishedAt: new Date(item.datetime * 1000).toISOString(),
-      sentiment: analyzeHeadlineSentiment(item.headline),
-      relevance: 0.8, // Finnhub already filters by relevance
+    .map((article) => ({
+      title: article.title,
+      source: article.source.name,
+      url: article.url,
+      publishedAt: article.publishedAt,
+      sentiment: article.sentiment || 'neutral',
+      relevance: 0.8,
     }));
-}
-
-function analyzeHeadlineSentiment(
-  headline: string
-): 'positive' | 'neutral' | 'negative' {
-  const lower = headline.toLowerCase();
-
-  // Positive keywords
-  const positiveWords = [
-    'surge', 'soar', 'jump', 'gain', 'rise', 'climb', 'rally',
-    'beat', 'exceed', 'strong', 'growth', 'profit', 'upgrade',
-    'breakthrough', 'record', 'bullish', 'boost', 'positive',
-  ];
-
-  // Negative keywords
-  const negativeWords = [
-    'fall', 'drop', 'plunge', 'crash', 'decline', 'sink', 'tumble',
-    'miss', 'cut', 'weak', 'loss', 'downgrade', 'concern', 'risk',
-    'warning', 'bearish', 'negative', 'layoff', 'lawsuit',
-  ];
-
-  const positiveCount = positiveWords.filter((w) => lower.includes(w)).length;
-  const negativeCount = negativeWords.filter((w) => lower.includes(w)).length;
-
-  if (positiveCount > negativeCount) return 'positive';
-  if (negativeCount > positiveCount) return 'negative';
-  return 'neutral';
-}
-
-function calculateOverallSentiment(
-  headlines: NewsHeadline[],
-  apiSentiment: FinnhubSentiment | null
-): { overallSentiment: NewsReportData['overallSentiment']; sentimentScore: number } {
-  // Use Finnhub sentiment if available
-  if (apiSentiment?.sentiment) {
-    const { bullishPercent, bearishPercent } = apiSentiment.sentiment;
-    const score = (bullishPercent - bearishPercent) / 100;
-
-    let sentiment: NewsReportData['overallSentiment'] = 'neutral';
-    if (score > 0.2) sentiment = 'bullish';
-    else if (score < -0.2) sentiment = 'bearish';
-
-    return { overallSentiment: sentiment, sentimentScore: score };
-  }
-
-  // Fallback to headline analysis
-  const sentimentCounts = headlines.reduce(
-    (acc, h) => {
-      acc[h.sentiment]++;
-      return acc;
-    },
-    { positive: 0, neutral: 0, negative: 0 }
-  );
-
-  const total = headlines.length || 1;
-  const score = (sentimentCounts.positive - sentimentCounts.negative) / total;
-
-  let sentiment: NewsReportData['overallSentiment'] = 'neutral';
-  if (score > 0.3) sentiment = 'bullish';
-  else if (score < -0.3) sentiment = 'bearish';
-
-  return { overallSentiment: sentiment, sentimentScore: score };
 }
 
 function getTopSources(headlines: NewsHeadline[]): string[] {
@@ -252,12 +159,12 @@ function getTopSources(headlines: NewsHeadline[]): string[] {
 function generateNewsSummary(
   symbol: string,
   data: NewsReportData,
-  apiSentiment: FinnhubSentiment | null
+  breakdown: { positive: number; neutral: number; negative: number }
 ): string {
   const parts: string[] = [];
 
   // Article count
-  parts.push(`Found ${data.articleCount} news articles for ${symbol} in the past week.`);
+  parts.push(`Found ${data.articleCount} news articles for ${symbol}.`);
 
   // Overall sentiment
   const sentimentDesc =
@@ -268,15 +175,11 @@ function generateNewsSummary(
       : 'mixed';
   parts.push(`Overall news sentiment is ${sentimentDesc}.`);
 
-  // Buzz level if available
-  if (apiSentiment?.buzz) {
-    const buzzLevel =
-      apiSentiment.buzz.buzz > 1.5
-        ? 'high'
-        : apiSentiment.buzz.buzz > 0.8
-        ? 'moderate'
-        : 'low';
-    parts.push(`Media attention is ${buzzLevel}.`);
+  // Sentiment breakdown
+  if (breakdown.positive > 0 || breakdown.negative > 0) {
+    parts.push(
+      `Breakdown: ${breakdown.positive} positive, ${breakdown.neutral} neutral, ${breakdown.negative} negative.`
+    );
   }
 
   // Top sources
@@ -287,19 +190,13 @@ function generateNewsSummary(
   return parts.join(' ');
 }
 
-function calculateNewsConfidence(
-  data: NewsReportData,
-  apiSentiment: FinnhubSentiment | null
-): number {
+function calculateNewsConfidence(data: NewsReportData): number {
   let confidence = 50;
 
   // More articles = more confidence
-  if (data.articleCount >= 10) confidence += 15;
-  else if (data.articleCount >= 5) confidence += 10;
-  else if (data.articleCount >= 2) confidence += 5;
-
-  // API sentiment available = more confidence
-  if (apiSentiment?.sentiment) confidence += 15;
+  if (data.articleCount >= 10) confidence += 20;
+  else if (data.articleCount >= 5) confidence += 15;
+  else if (data.articleCount >= 2) confidence += 8;
 
   // Strong sentiment agreement
   const sentimentStrength = Math.abs(data.sentimentScore);

@@ -64,6 +64,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    host: true,  // Enable network access for mobile testing
     open: true
   },
   build: {
