@@ -43,12 +43,14 @@ const COMPANY_NAMES: Record<string, string> = {
  * @param symbol - Stock symbol
  * @param companyName - Company name for better search context
  * @param currentPrice - Current stock price for context
+ * @param customPrompt - Optional custom prompt from Claude Opus orchestrator
  * @returns Research intelligence report or null if unavailable
  */
 export async function gatherResearchIntelligence(
   symbol: string,
   companyName?: string,
-  currentPrice?: number
+  currentPrice?: number,
+  customPrompt?: string
 ): Promise<ResearchReport | null> {
   const store = useApiKeysStore.getState();
   const geminiKey = store.getApiKey('gemini');
@@ -61,7 +63,8 @@ export async function gatherResearchIntelligence(
   if (geminiKey) {
     try {
       console.debug(`[Research] Fetching analyst data for ${symbol} via Gemini`);
-      const geminiResult = await getGeminiResearch(symbol, name, price, geminiKey);
+      // Pass custom prompt if provided by orchestrator
+      const geminiResult = await getGeminiResearch(symbol, name, price, geminiKey, customPrompt);
 
       if (geminiResult) {
         // Build citations from Gemini sources (live web search)

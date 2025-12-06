@@ -42,11 +42,13 @@ const COMPANY_NAMES: Record<string, string> = {
  *
  * @param symbol - Stock symbol (e.g., AAPL)
  * @param companyName - Optional company name for better search context
+ * @param customPrompt - Optional custom prompt from Claude Opus orchestrator
  * @returns Social intelligence report or null if unavailable
  */
 export async function gatherSocialIntelligence(
   symbol: string,
-  companyName?: string
+  companyName?: string,
+  customPrompt?: string
 ): Promise<SocialReport | null> {
   try {
     const apiKey = useApiKeysStore.getState().getApiKey('grok');
@@ -59,7 +61,8 @@ export async function gatherSocialIntelligence(
     const name = companyName || COMPANY_NAMES[symbol.toUpperCase()] || symbol;
     console.debug(`[Social] Fetching X/Twitter sentiment for ${symbol} via Grok`);
 
-    const grokResult = await getXSentiment(symbol, name, apiKey);
+    // Pass custom prompt if provided by orchestrator
+    const grokResult = await getXSentiment(symbol, name, apiKey, customPrompt);
 
     if (!grokResult) {
       console.debug(`[Social] No Grok result for ${symbol}`);

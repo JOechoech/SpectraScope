@@ -24,12 +24,13 @@ import type { AggregateScore } from '@/utils/signals';
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MODEL = 'claude-sonnet-4-20250514';
-const MAX_TOKENS = 2500;
+// Use Claude Sonnet 4.5 for synthesis (fast, cost-effective)
+const MODEL = 'claude-sonnet-4-5-20250514';
+const MAX_TOKENS = 4000;
 
-// Token cost estimation (USD per 1K tokens)
-const INPUT_COST_PER_1K = 0.003;
-const OUTPUT_COST_PER_1K = 0.015;
+// Token cost estimation (USD per 1K tokens) - Sonnet 4.5 pricing
+const INPUT_COST_PER_1K = 0.003;  // $3 per 1M tokens
+const OUTPUT_COST_PER_1K = 0.015; // $15 per 1M tokens
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ENGLISH PROMPT TEMPLATES

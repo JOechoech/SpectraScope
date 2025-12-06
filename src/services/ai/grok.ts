@@ -59,10 +59,19 @@ export interface SocialSentimentResult {
   timestamp: string;
 }
 
+/**
+ * Get X/Twitter sentiment with optional custom prompt from orchestrator
+ *
+ * @param symbol - Stock symbol
+ * @param companyName - Company name
+ * @param apiKey - Grok API key
+ * @param customPrompt - Optional custom prompt from Claude Opus orchestrator
+ */
 export async function getXSentiment(
   symbol: string,
   companyName: string,
-  apiKey: string
+  apiKey: string,
+  customPrompt?: string
 ): Promise<SocialSentimentResult | null> {
   if (!apiKey) {
     console.log('Grok API key not configured');
@@ -71,6 +80,42 @@ export async function getXSentiment(
 
   try {
     const dates = getDateRange();
+
+    // Use custom prompt if provided, otherwise use default
+    const userPromptContent = customPrompt
+      ? `${customPrompt}
+
+IMPORTANT RULES:
+- Only report data from the LAST 7 DAYS (${dates.sevenDaysAgo} to ${dates.today})
+- Include dates for all mentions found
+- If no mentions found, say "Low social volume - minimal X/Twitter discussion"
+- DO NOT fabricate data
+- Return sentiment: bullish/bearish/neutral with confidence %
+
+OUTPUT FORMAT:
+{
+  "sentiment": {
+    "score": <number -1 to 1>,
+    "label": "<bullish|neutral|bearish>",
+    "confidence": <number 0-100>
+  },
+  "metrics": {
+    "mentionCount": <estimated mentions in last 7 days>,
+    "sentimentBreakdown": { "positive": <n>, "neutral": <n>, "negative": <n> },
+    "trending": <boolean>,
+    "buzzLevel": "<low|medium|high|viral>"
+  },
+  "topTakes": [
+    { "text": "<post content>", "engagement": <number>, "sentiment": "<positive|neutral|negative>", "date": "<YYYY-MM-DD>" }
+  ],
+  "retailVsInstitutional": "<retail-heavy|mixed|institutional>",
+  "dateRange": "${dates.sevenDaysAgo} to ${dates.today}"
+}`
+      : `Find X/Twitter posts about $${symbol} (${companyName}) from the LAST 7 DAYS ONLY (${dates.sevenDaysAgo} to ${dates.today}).
+
+What are people saying about this stock RIGHT NOW in ${dates.today.split('.')[1]}/${dates.today.split('.')[2]}?
+
+If there are no recent posts, return mentionCount: 0 and empty topTakes.`;
 
     // Grok API for chat completions with X context
     const response = await fetch(`${BASE_URL}/chat/completions`, {
@@ -116,11 +161,7 @@ Return ONLY valid JSON:
           },
           {
             role: 'user',
-            content: `Find X/Twitter posts about $${symbol} (${companyName}) from the LAST 7 DAYS ONLY (${dates.sevenDaysAgo} to ${dates.today}).
-
-What are people saying about this stock RIGHT NOW in ${dates.today.split('.')[1]}/${dates.today.split('.')[2]}?
-
-If there are no recent posts, return mentionCount: 0 and empty topTakes.`,
+            content: userPromptContent,
           },
         ],
         temperature: 0.3,

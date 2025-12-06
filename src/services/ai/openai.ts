@@ -25,10 +25,19 @@ export interface OpenAINewsResult {
   timestamp: string;
 }
 
+/**
+ * Get OpenAI news analysis with optional custom prompt from orchestrator
+ *
+ * @param symbol - Stock symbol
+ * @param companyName - Company name
+ * @param apiKey - OpenAI API key
+ * @param customPrompt - Optional custom prompt from Claude Opus orchestrator
+ */
 export async function getOpenAINewsAnalysis(
   symbol: string,
   companyName: string,
-  apiKey: string
+  apiKey: string,
+  customPrompt?: string
 ): Promise<OpenAINewsResult | null> {
   if (!apiKey) {
     console.log('OpenAI API key not configured');
@@ -36,18 +45,30 @@ export async function getOpenAINewsAnalysis(
   }
 
   try {
-    // Use Responses API with web_search tool for LIVE data
-    const response = await fetch(`${BASE_URL}/responses`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        // Enable web search tool for live data
-        tools: [{ type: 'web_search' }],
-        input: `You are a financial news analyst. Search the web for the LATEST news about ${symbol} (${companyName}).
+    // Build the prompt - use custom if provided
+    const searchPrompt = customPrompt
+      ? `${customPrompt}
+
+IMPORTANT RULES:
+- Search for OFFICIAL company sources only
+- Include publication dates for all items
+- Prioritize: SEC filings, press releases, investor relations
+- DO NOT speculate - only report confirmed facts
+
+OUTPUT FORMAT:
+{
+  "headlines": [
+    { "title": "headline text", "summary": "brief summary", "sentiment": "positive|neutral|negative", "source": "source name", "date": "YYYY-MM-DD", "url": "article url" }
+  ],
+  "overallSentiment": "bullish|neutral|bearish",
+  "sentimentScore": <number -1 to 1>,
+  "keyTopics": ["topic1", "topic2"],
+  "marketImpact": "brief assessment of potential market impact",
+  "sources": [{ "title": "source title", "url": "url", "date": "YYYY-MM-DD" }]
+}
+
+Provide 3-5 key headlines with dates and sources.`
+      : `You are a financial news analyst. Search the web for the LATEST news about ${symbol} (${companyName}).
 
 IMPORTANT: Use web search to find REAL-TIME, CURRENT news. Do NOT rely on training data.
 
@@ -70,7 +91,20 @@ Return ONLY valid JSON:
   "sources": [{ "title": "source title", "url": "url", "date": "YYYY-MM-DD" }]
 }
 
-Provide 3-5 key headlines with dates and sources. CRITICAL: Include actual dates for all news.`,
+Provide 3-5 key headlines with dates and sources. CRITICAL: Include actual dates for all news.`;
+
+    // Use Responses API with web_search tool for LIVE data
+    const response = await fetch(`${BASE_URL}/responses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        // Enable web search tool for live data
+        tools: [{ type: 'web_search' }],
+        input: searchPrompt,
         temperature: 0.3,
       }),
     });
