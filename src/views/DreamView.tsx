@@ -27,6 +27,8 @@ import {
   Plus,
   Trash2,
   Save,
+  X,
+  Archive,
 } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
@@ -178,6 +180,10 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
   // Portfolio projection state
   const [moonProjections, setMoonProjections] = useState<PortfolioProjection[]>([]);
   const [doomProjections, setDoomProjections] = useState<PortfolioProjection[]>([]);
+
+  // Archive modal state
+  const [showDreamArchive, setShowDreamArchive] = useState(false);
+  const [selectedDream, setSelectedDream] = useState<SavedDream | null>(null);
 
   const { items: watchlistItems, holdings } = useWatchlistStore();
   const { getLatestAnalysis } = useAnalysisStore();
@@ -770,26 +776,41 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
       {/* Saved Dreams */}
       {savedDreams.length > 0 && (
         <div className="mt-8">
-          <h3 className="text-slate-400 text-sm font-medium mb-3 flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            My Dreams
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-slate-400 text-sm font-medium flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              My Dreams
+            </h3>
+            {savedDreams.length > 3 && (
+              <button
+                onClick={() => setShowDreamArchive(true)}
+                className="text-violet-400 text-xs flex items-center gap-1 hover:text-violet-300 transition-colors"
+              >
+                <Archive className="w-3 h-3" />
+                View All ({savedDreams.length})
+              </button>
+            )}
+          </div>
           <div className="space-y-2">
-            {savedDreams.slice(0, 5).map((dream) => (
-              <div
+            {savedDreams.slice(0, 3).map((dream) => (
+              <button
                 key={dream.id}
-                className="bg-slate-900/50 border border-slate-800/50 rounded-xl p-3"
+                onClick={() => setSelectedDream(dream)}
+                className="w-full bg-slate-900/50 border border-slate-800/50 rounded-xl p-3 text-left hover:bg-slate-800/50 hover:border-violet-500/30 transition-all"
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white text-sm font-medium">{dream.title}</p>
-                    <p className="text-slate-500 text-xs">{dream.summary}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{dream.title}</p>
+                    <p className="text-slate-500 text-xs truncate">{dream.summary}</p>
                   </div>
-                  <span className="text-slate-600 text-xs">
-                    {formatDate(dream.timestamp)}
-                  </span>
+                  <div className="flex items-center gap-2 ml-3">
+                    <span className="text-slate-600 text-xs whitespace-nowrap">
+                      {formatDate(dream.timestamp)}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-slate-600" />
+                  </div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -1851,6 +1872,233 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
           For entertainment only - not financial advice
         </p>
       </div>
+
+      {/* Dream Archive Modal */}
+      {showDreamArchive && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 overflow-y-auto">
+          <div className="min-h-screen px-4 py-8">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Archive className="w-5 h-5 text-violet-400" />
+                Dream Archive
+              </h2>
+              <button
+                onClick={() => setShowDreamArchive(false)}
+                className="w-10 h-10 rounded-full bg-slate-800/80 flex items-center justify-center"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
+            </div>
+
+            {/* Dreams List */}
+            <div className="space-y-3">
+              {savedDreams.map((dream) => (
+                <button
+                  key={dream.id}
+                  onClick={() => {
+                    setSelectedDream(dream);
+                    setShowDreamArchive(false);
+                  }}
+                  className="w-full bg-slate-900/70 border border-slate-800/50 rounded-xl p-4 text-left hover:bg-slate-800/50 hover:border-violet-500/30 transition-all"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">
+                          {dream.type === 'backtest' ? '⏪' : dream.type === 'forecast' ? '🎯' : dream.type === 'moon' ? '🚀' : '💀'}
+                        </span>
+                        <p className="text-white font-medium truncate">{dream.title}</p>
+                      </div>
+                      <p className="text-slate-400 text-sm">{dream.summary}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-slate-500 text-xs whitespace-nowrap">
+                        {formatDate(dream.timestamp)}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-slate-600" />
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Clear All Button */}
+            {savedDreams.length > 0 && (
+              <button
+                onClick={() => {
+                  if (confirm('Delete all saved dreams?')) {
+                    setSavedDreams([]);
+                    localStorage.removeItem(DREAMS_STORAGE_KEY);
+                    setShowDreamArchive(false);
+                  }
+                }}
+                className="w-full mt-6 py-3 text-rose-400 text-sm flex items-center justify-center gap-2 hover:bg-rose-500/10 rounded-xl transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear All Dreams
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Selected Dream Detail Modal */}
+      {selectedDream && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 overflow-y-auto">
+          <div className="min-h-screen px-4 py-8">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">
+                  {selectedDream.type === 'backtest' ? '⏪' : selectedDream.type === 'forecast' ? '🎯' : selectedDream.type === 'moon' ? '🚀' : '💀'}
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold text-white">{selectedDream.title}</h2>
+                  <p className="text-slate-400 text-sm">{formatDate(selectedDream.timestamp)}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedDream(null)}
+                className="w-10 h-10 rounded-full bg-slate-800/80 flex items-center justify-center"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
+            </div>
+
+            {/* Dream Content */}
+            <div className="bg-slate-900/70 border border-slate-800/50 rounded-xl p-4">
+              <p className="text-slate-300 mb-4">{selectedDream.summary}</p>
+
+              {/* Backtest Result */}
+              {selectedDream.type === 'backtest' && (
+                <div className="space-y-3">
+                  {(() => {
+                    const data = selectedDream.data as BacktestResult;
+                    return (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Symbol</span>
+                          <span className="text-white font-medium">{data.symbol}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Investment</span>
+                          <span className="text-white">${data.investmentAmount.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Purchase Price</span>
+                          <span className="text-white">${data.purchasePrice.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Current Value</span>
+                          <span className={data.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                            ${data.currentValue.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between pt-2 border-t border-slate-800">
+                          <span className="text-slate-400">Total Return</span>
+                          <span className={data.profit >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                            {data.profit >= 0 ? '+' : ''}{data.profitPercent.toFixed(1)}%
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Forecast Result */}
+              {selectedDream.type === 'forecast' && (
+                <div className="space-y-3">
+                  {(() => {
+                    const data = selectedDream.data as ForecastResult;
+                    return (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Symbol</span>
+                          <span className="text-white font-medium">{data.symbol}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Current Price</span>
+                          <span className="text-white">${data.currentPrice.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Target Price</span>
+                          <span className="text-violet-400">${data.targetPrice.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between pt-2 border-t border-slate-800">
+                          <span className="text-slate-400">Potential Gain</span>
+                          <span className="text-emerald-400 font-bold">
+                            +${data.potentialProfit.toLocaleString()}
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Moon/Doom Projections */}
+              {(selectedDream.type === 'moon' || selectedDream.type === 'doom') && (
+                <div className="space-y-3">
+                  {(() => {
+                    const projections = selectedDream.data as PortfolioProjection[];
+                    const totalCurrent = projections.reduce((s, p) => s + p.currentValue, 0);
+                    const totalTarget = projections.reduce((s, p) => s + p.targetValue, 0);
+                    const totalChange = totalTarget - totalCurrent;
+
+                    return (
+                      <>
+                        {projections.map((p) => (
+                          <div key={p.symbol} className="flex items-center justify-between py-2 border-b border-slate-800/50 last:border-0">
+                            <div>
+                              <span className="text-white font-medium">{p.symbol}</span>
+                              <span className="text-slate-500 text-sm ml-2">{p.shares} shares</span>
+                            </div>
+                            <div className="text-right">
+                              <p className={p.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                                ${p.targetValue.toLocaleString()}
+                              </p>
+                              <p className={`text-xs ${p.change >= 0 ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>
+                                {p.change >= 0 ? '+' : ''}{p.changePercent.toFixed(1)}%
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="flex justify-between pt-3 border-t border-slate-700">
+                          <span className="text-white font-bold">Total Portfolio</span>
+                          <div className="text-right">
+                            <p className={totalChange >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                              ${totalTarget.toLocaleString()}
+                            </p>
+                            <p className={`text-xs ${totalChange >= 0 ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>
+                              {totalChange >= 0 ? '+' : ''}${totalChange.toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* Delete Button */}
+            <button
+              onClick={() => {
+                const newDreams = savedDreams.filter(d => d.id !== selectedDream.id);
+                setSavedDreams(newDreams);
+                localStorage.setItem(DREAMS_STORAGE_KEY, JSON.stringify(newDreams));
+                setSelectedDream(null);
+              }}
+              className="w-full mt-4 py-3 text-rose-400 text-sm flex items-center justify-center gap-2 hover:bg-rose-500/10 rounded-xl transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete This Dream
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 });
