@@ -103,6 +103,13 @@ export interface Scenario {
   risks: string[];
 }
 
+export interface SourceAssessment {
+  source: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+  score: number; // 1-10
+  reason: string;
+}
+
 export interface DeepDiveResult {
   timestamp: string;
   type: 'deep';
@@ -120,6 +127,9 @@ export interface DeepDiveResult {
   confidence: number;
   reasoning: string;
   bottomLine?: string; // Claude's 5-10 sentence investor summary
+  overallSentiment?: 'bullish' | 'bearish' | 'neutral';
+  overallScore?: number; // 1-10 overall rating
+  sourceAssessments?: SourceAssessment[];
   tokenUsage?: {
     input: number;
     output: number;
