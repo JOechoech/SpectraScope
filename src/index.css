@@ -140,9 +140,7 @@
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
     scroll-behavior: smooth;
-    /* Background color set via --theme-color CSS variable (defined in index.html) */
-    /* Updated dynamically by updateThemeColor() for status bar theming */
-    background-color: var(--theme-color, #0d9488);
+    background-color: #000000;
   }
 
   body {
