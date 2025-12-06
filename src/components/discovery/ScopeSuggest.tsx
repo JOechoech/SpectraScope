@@ -354,7 +354,11 @@ Only return valid JSON.`,
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          const results = parsed.results || [];
+          // Normalize signal to lowercase (AI might return BULLISH/Bullish/bullish)
+          const results = (parsed.results || []).map((r: ScanResult) => ({
+            ...r,
+            signal: (r.signal?.toLowerCase() || 'neutral') as 'bullish' | 'bearish' | 'neutral',
+          }));
           const timestamp = new Date();
           setScanResults(results);
           setScanTimestamp(timestamp);
@@ -439,7 +443,11 @@ Only return valid JSON.`,
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          const results = parsed.results || [];
+          // Normalize signal to lowercase (AI might return BULLISH/Bullish/bullish)
+          const results = (parsed.results || []).map((r: ScanResult) => ({
+            ...r,
+            signal: (r.signal?.toLowerCase() || 'neutral') as 'bullish' | 'bearish' | 'neutral',
+          }));
           const timestamp = new Date();
           setScanResults(results);
           setScanTimestamp(timestamp);
