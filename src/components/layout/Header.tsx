@@ -27,7 +27,7 @@ export const Header = memo(function Header({
   badge,
 }: HeaderProps) {
   return (
-    <header className="sticky top-0 z-20 bg-black/80 backdrop-blur-xl border-b border-slate-800/50">
+    <header className="sticky top-0 z-20 bg-black/30 backdrop-blur-md border-b border-slate-800/30">
       <div className="px-5 py-4">
         <div className="flex items-center gap-4">
           {/* Back Button */}

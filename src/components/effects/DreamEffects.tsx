@@ -5,14 +5,15 @@ import { memo, useMemo } from 'react';
  * Features: 3D floating clouds and subtle rain
  */
 export const DreamEffects = memo(function DreamEffects() {
-  // Generate rain drops with random positions and delays
+  // Generate rain drops with random positions and delays - heavier rain with thicker drops
   const rainDrops = useMemo(() => {
-    return Array.from({ length: 25 }, (_, i) => ({
+    return Array.from({ length: 50 }, (_, i) => ({
       id: i,
       left: `${Math.random() * 100}%`,
-      delay: `${Math.random() * 3}s`,
-      duration: `${1.2 + Math.random() * 0.8}s`,
-      height: `${10 + Math.random() * 15}px`,
+      delay: `${Math.random() * 2}s`,
+      duration: `${1.0 + Math.random() * 0.6}s`,
+      height: `${20 + Math.random() * 30}px`,
+      width: `${2 + Math.random() * 2}px`,
     }));
   }, []);
 
@@ -72,6 +73,7 @@ export const DreamEffects = memo(function DreamEffects() {
               animationDelay: drop.delay,
               animationDuration: drop.duration,
               height: drop.height,
+              width: drop.width,
             }}
           />
         ))}
