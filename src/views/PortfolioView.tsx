@@ -10,12 +10,32 @@
  */
 
 import { useState, useMemo, memo, useEffect, useCallback } from 'react';
-import { Edit2, Trash2, PieChart, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
+import { Edit2, Trash2, PieChart, TrendingUp, TrendingDown, RefreshCw, FileText, Clock, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { PortfolioAnalysis } from '@/components/portfolio/PortfolioAnalysis';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useQuoteCacheStore } from '@/stores/useQuoteCacheStore';
+import { useAnalysisStore } from '@/stores/useAnalysisStore';
+import type { AnalysisEntry } from '@/stores/useAnalysisStore';
 import * as marketData from '@/services/marketData';
+
+// Helper function to format relative time
+function formatTimeAgo(timestamp: string): string {
+  const now = new Date();
+  const then = new Date(timestamp);
+  const diffMs = now.getTime() - then.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  return `${Math.floor(diffDays / 30)}mo ago`;
+}
 
 interface PortfolioViewProps {
   onBack: () => void;
@@ -44,6 +64,8 @@ export const PortfolioView = memo(function PortfolioView({
   const { items: watchlistItems, holdings, setShares } = useWatchlistStore();
   const quotes = useQuoteCacheStore((s) => s.quotes);
   const setQuotesCache = useQuoteCacheStore((s) => s.setQuotes);
+  const analyses = useAnalysisStore((s) => s.analyses);
+  const totalAnalysisCost = useAnalysisStore((s) => s.totalCost);
 
   const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
   const [editShares, setEditShares] = useState('');
@@ -55,6 +77,18 @@ export const PortfolioView = memo(function PortfolioView({
       .filter((h) => h.shares > 0)
       .map((h) => h.symbol.toUpperCase());
   }, [holdings]);
+
+  // Get all analyses flattened and sorted by timestamp
+  const allReports = useMemo(() => {
+    const reports: AnalysisEntry[] = [];
+    Object.values(analyses).forEach((symbolReports) => {
+      reports.push(...symbolReports);
+    });
+    // Sort by timestamp, newest first
+    return reports.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  }, [analyses]);
 
   // Fetch quotes for all holdings
   const loadQuotes = useCallback(async () => {
@@ -440,6 +474,97 @@ export const PortfolioView = memo(function PortfolioView({
               )}
             </div>
           ))
+        )}
+      </div>
+
+      {/* My Reports Section */}
+      <div className="px-5 py-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-purple-400" />
+            <h2 className="text-slate-400 text-sm font-medium">My Reports</h2>
+            <span className="text-xs text-slate-600">
+              ({allReports.length} analyses)
+            </span>
+          </div>
+          {totalAnalysisCost > 0 && (
+            <span className="text-xs text-slate-500">
+              Total: ${totalAnalysisCost.toFixed(4)}
+            </span>
+          )}
+        </div>
+
+        {allReports.length === 0 ? (
+          <div className="bg-slate-800/50 rounded-xl p-6 text-center">
+            <FileText className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+            <p className="text-slate-400">No AI analyses yet</p>
+            <p className="text-slate-500 text-sm mt-1">
+              Run a Deep Dive on any stock to see reports here
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {allReports.slice(0, 10).map((report) => (
+              <button
+                key={report.id}
+                onClick={() => onSelectStock(report.symbol)}
+                className="w-full bg-slate-900/50 border border-slate-800/50 rounded-xl p-3 text-left hover:bg-slate-800/50 transition-colors"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white font-semibold">{report.symbol}</span>
+                    <span
+                      className={`text-xs px-1.5 py-0.5 rounded ${
+                        report.dominantScenario === 'bull'
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : report.dominantScenario === 'bear'
+                            ? 'bg-rose-500/20 text-rose-400'
+                            : 'bg-blue-500/20 text-blue-400'
+                      }`}
+                    >
+                      {report.dominantScenario === 'bull' ? (
+                        <ArrowUpRight className="w-3 h-3 inline mr-0.5" />
+                      ) : report.dominantScenario === 'bear' ? (
+                        <ArrowDownRight className="w-3 h-3 inline mr-0.5" />
+                      ) : (
+                        <Minus className="w-3 h-3 inline mr-0.5" />
+                      )}
+                      {report.dominantScenario.toUpperCase()}
+                    </span>
+                    <span className="text-xs text-slate-600 capitalize">
+                      {report.type.replace('-', ' ')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-slate-500">
+                    <Clock className="w-3 h-3" />
+                    <span className="text-xs">{formatTimeAgo(report.timestamp)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex gap-3 text-slate-500">
+                    <span>
+                      Bull: {report.result.bull?.probability || 0}%
+                    </span>
+                    <span>
+                      Base: {report.result.base?.probability || 0}%
+                    </span>
+                    <span>
+                      Bear: {report.result.bear?.probability || 0}%
+                    </span>
+                  </div>
+                  <span className="text-slate-600">
+                    ${report.cost.toFixed(4)}
+                  </span>
+                </div>
+              </button>
+            ))}
+
+            {allReports.length > 10 && (
+              <p className="text-center text-slate-500 text-xs py-2">
+                +{allReports.length - 10} more reports
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>
