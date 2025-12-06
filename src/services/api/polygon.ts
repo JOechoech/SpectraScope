@@ -6,6 +6,10 @@
  * - Bulk snapshot (all watchlist stocks in one call)
  * - Options chain with Greeks
  * - Previous day's OHLCV
+ * - API key validation
+ *
+ * IMPORTANT: This module NEVER returns fake/mock data!
+ * All data comes from the real Polygon.io API.
  *
  * API Docs: https://polygon.io/docs
  */
@@ -106,6 +110,63 @@ export interface PolygonOptionsResponse {
   results: PolygonOption[];
   status: string;
   next_url?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// API KEY VALIDATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ApiKeyValidationResult {
+  valid: boolean;
+  error?: string;
+  plan?: string;
+}
+
+/**
+ * Test if a Polygon API key is valid by making a real API call
+ * This ensures the green checkmark only shows when the key actually works!
+ */
+export async function testApiKey(apiKey: string): Promise<ApiKeyValidationResult> {
+  if (!apiKey || apiKey.trim().length < 10) {
+    return { valid: false, error: 'Invalid key format' };
+  }
+
+  try {
+    // Test with a simple previous day request for AAPL
+    const url = `${POLYGON_BASE}/v2/aggs/ticker/AAPL/prev?apiKey=${apiKey}`;
+    const response = await fetch(url);
+
+    if (response.status === 401 || response.status === 403) {
+      return { valid: false, error: 'Invalid or expired API key' };
+    }
+
+    if (!response.ok) {
+      return { valid: false, error: `API error: ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    if (data.status === 'ERROR') {
+      return { valid: false, error: data.error || 'API returned error' };
+    }
+
+    // Check if we got actual data
+    if (data.results && data.results.length > 0) {
+      return { valid: true };
+    }
+
+    // Weekend/holiday - API works but no data
+    if (data.resultsCount === 0) {
+      return { valid: true }; // Key is valid, just no data for today
+    }
+
+    return { valid: true };
+  } catch (error) {
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : 'Connection failed',
+    };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -369,102 +430,15 @@ export async function searchTickers(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MOCK DATA (Fallback when no API key)
+// DEFAULT EXPORT
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MOCK_PRICES: Record<string, number> = {
-  AAPL: 195.23,
-  MSFT: 425.67,
-  GOOGL: 175.89,
-  NVDA: 875.43,
-  TSLA: 248.92,
-  AMZN: 186.54,
-  META: 512.38,
-  JPM: 198.76,
-  V: 287.45,
-  BRK: 412.33,
-};
-
-const MOCK_CHANGES: Record<string, number> = {
-  AAPL: 2.34,
-  MSFT: -1.23,
-  GOOGL: 3.45,
-  NVDA: 12.56,
-  TSLA: -5.67,
-  AMZN: 1.89,
-  META: 4.32,
-  JPM: -0.87,
-  V: 2.12,
-  BRK: 1.45,
-};
-
-export function getMockQuote(symbol: string): StockQuote {
-  const price = MOCK_PRICES[symbol] || 100 + Math.random() * 200;
-  const change = MOCK_CHANGES[symbol] || (Math.random() - 0.5) * 10;
-  const changePercent = (change / price) * 100;
-
-  return {
-    symbol,
-    price,
-    change,
-    changePercent,
-    volume: Math.floor(10000000 + Math.random() * 50000000),
-    open: price - change + (Math.random() - 0.5) * 2,
-    high: price + Math.abs(change) + Math.random() * 3,
-    low: price - Math.abs(change) - Math.random() * 3,
-    previousClose: price - change,
-    latestTradingDay: new Date().toISOString().split('T')[0],
-  };
-}
-
-export function getMockBulkSnapshot(symbols: string[]): Map<string, StockQuote> {
-  const results = new Map<string, StockQuote>();
-  for (const symbol of symbols) {
-    results.set(symbol, getMockQuote(symbol));
-  }
-  return results;
-}
-
-export function getMockDailyData(symbol: string, days: number = 365): HistoricalDataPoint[] {
-  const basePrice = MOCK_PRICES[symbol] || 150;
-  const data: HistoricalDataPoint[] = [];
-
-  let price = basePrice * (0.7 + Math.random() * 0.3);
-
-  for (let i = days; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-
-    // Random walk
-    const change = (Math.random() - 0.48) * basePrice * 0.03;
-    price = Math.max(price + change, basePrice * 0.3);
-
-    const dailyVolatility = Math.random() * 0.02;
-    const high = price * (1 + dailyVolatility);
-    const low = price * (1 - dailyVolatility);
-    const open = low + Math.random() * (high - low);
-
-    data.push({
-      date: date.toISOString().split('T')[0],
-      open,
-      high,
-      low,
-      close: price,
-      volume: Math.floor(10000000 + Math.random() * 40000000),
-    });
-  }
-
-  return data.reverse();
-}
-
 export default {
+  testApiKey,
   getBulkSnapshot,
   getQuote,
   getDailyData,
   getOptionsChain,
   calculateOptionsMetrics,
   searchTickers,
-  getMockQuote,
-  getMockBulkSnapshot,
-  getMockDailyData,
 };

@@ -30,7 +30,7 @@ import {
   getQuote,
   getDailyData,
 } from '@/services/marketData';
-import { getMockQuote, getMockDailyData } from '@/services/api/polygon';
+// No mock imports - we NEVER show fake data
 import { getStockNews, type NewsArticle } from '@/services/api/newsapi';
 import { synthesizeFromIntelligence } from '@/services/ai/anthropic';
 import { gatherIntelligence } from '@/services/intelligence';
@@ -138,13 +138,13 @@ export const DetailView = memo(function DetailView({
         getDailyData(symbol, 365),
       ]);
       setQuote(quoteResult.data);
-      setPriceData(dailyResult.data);
+      setPriceData(dailyResult.data || []);
     } catch (err) {
-      setError('Failed to load price data');
+      setError('Failed to load price data. Add Polygon API key in Settings.');
       console.error(err);
-      // Fallback to mock
-      setQuote(getMockQuote(symbol));
-      setPriceData(getMockDailyData(symbol, 365));
+      // NO mock fallback - show error to user instead
+      setQuote(null);
+      setPriceData([]);
     } finally {
       setIsLoadingPrice(false);
     }

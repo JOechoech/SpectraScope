@@ -18,7 +18,6 @@ import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useStoreHydration } from '@/stores/useApiKeysStore';
 import { useQuoteCacheStore } from '@/stores/useQuoteCacheStore';
 import * as marketData from '@/services/marketData';
-import { getMockDailyData } from '@/services/api/polygon';
 import {
   calculateRSI,
   calculateMACD,
@@ -139,10 +138,10 @@ export const WatchlistView = memo(function WatchlistView({
         let prices: number[] = [];
         try {
           const dailyResult = await marketData.getDailyData(symbol, 30);
-          prices = dailyResult.data.slice(0, 20).map((d) => d.close);
+          prices = (dailyResult.data || []).slice(0, 20).map((d) => d.close);
         } catch {
-          const mockDaily = getMockDailyData(symbol, 30);
-          prices = mockDaily.slice(-20).map((d) => d.close);
+          // No mock fallback - use empty array if real data unavailable
+          prices = [];
         }
 
         // Calculate signal score if we have enough data
@@ -221,9 +220,9 @@ export const WatchlistView = memo(function WatchlistView({
         for (const symbol of symbols) {
           const quote = cachedQuotes[symbol];
           if (quote) {
-            // Get sparkline from mock for now
-            const mockDaily = getMockDailyData(symbol, 30);
-            const prices = mockDaily.slice(-20).map((d) => d.close);
+            // Use sparkline from watchlist item if available
+            const watchlistItem = watchlistItems.find((w) => w.symbol === symbol);
+            const prices = watchlistItem?.sparkline || [];
 
             setStockData((prev) => ({
               ...prev,

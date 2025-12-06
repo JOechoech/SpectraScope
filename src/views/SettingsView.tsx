@@ -31,10 +31,8 @@ import { ApiKeyInput, ActiveSourcesCard } from '@/components/settings';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useAnalysisStore } from '@/stores/useAnalysisStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { APP_VERSION, APP_NAME, APP_DESCRIPTION } from '@/constants/version';
 import type { ApiKeys } from '@/types';
-
-// App version
-const APP_VERSION = '1.0.0';
 
 interface SettingsViewProps {
   onBack: () => void;
@@ -145,7 +143,7 @@ export const SettingsView = memo(function SettingsView({
   } = useApiKeysStore();
 
   const { totalCost, totalAnalyses, clearHistory } = useAnalysisStore();
-  const { oledMode, toggleOledMode } = useSettingsStore();
+  const { theme, toggleTheme } = useSettingsStore();
 
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>(() => {
@@ -377,26 +375,28 @@ export const SettingsView = memo(function SettingsView({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-slate-800/50">
-                  {oledMode ? (
-                    <Moon size={18} className="text-purple-400" />
-                  ) : (
+                  {theme === 'light' ? (
                     <Sun size={18} className="text-amber-400" />
+                  ) : (
+                    <Moon size={18} className="text-blue-400" />
                   )}
                 </div>
                 <div>
-                  <h3 className="text-white font-medium">OLED Mode</h3>
-                  <p className="text-slate-500 text-xs">True black backgrounds for OLED screens</p>
+                  <h3 className="text-white font-medium">Theme</h3>
+                  <p className="text-slate-500 text-xs">
+                    {theme === 'light' ? 'Light mode' : 'Dark mode'}
+                  </p>
                 </div>
               </div>
               <button
-                onClick={toggleOledMode}
+                onClick={toggleTheme}
                 className={`w-14 h-8 rounded-full transition-all duration-300 ${
-                  oledMode ? 'bg-blue-500' : 'bg-slate-700'
+                  theme === 'light' ? 'bg-amber-500' : 'bg-slate-700'
                 }`}
               >
                 <div
                   className={`w-6 h-6 rounded-full bg-white shadow-lg transition-transform duration-300 ${
-                    oledMode ? 'translate-x-7' : 'translate-x-1'
+                    theme === 'light' ? 'translate-x-7' : 'translate-x-1'
                   }`}
                 />
               </button>
@@ -410,10 +410,10 @@ export const SettingsView = memo(function SettingsView({
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
               <Sparkles size={32} className="text-white" />
             </div>
-            <h3 className="text-white font-bold text-xl">SpectraScope</h3>
+            <h3 className="text-white font-bold text-xl">{APP_NAME}</h3>
             <p className="text-slate-500 text-sm mt-1">Version {APP_VERSION}</p>
             <p className="text-slate-600 text-xs mt-4">
-              AI-Powered Investment Analysis
+              {APP_DESCRIPTION}
             </p>
           </div>
         </div>

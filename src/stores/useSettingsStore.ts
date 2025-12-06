@@ -1,80 +1,79 @@
 /**
  * Settings Store - User preferences
  *
- * Manages visual and behavior settings including OLED mode.
- * OLED mode applies true black backgrounds for OLED screens.
+ * Manages visual and behavior settings including theme mode.
  */
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-// Apply OLED mode to document
-const applyOledMode = (enabled: boolean) => {
+export type Theme = 'dark' | 'light';
+
+// Apply theme to document
+const applyTheme = (theme: Theme) => {
   if (typeof document === 'undefined') return;
 
-  if (enabled) {
-    document.documentElement.classList.add('oled-mode');
-    document.body.style.backgroundColor = '#000000';
+  const root = document.documentElement;
+
+  if (theme === 'light') {
+    root.classList.add('light-theme');
+    root.classList.remove('dark-theme');
+    document.body.style.backgroundColor = '#f5f5f7';
   } else {
-    document.documentElement.classList.remove('oled-mode');
-    document.body.style.backgroundColor = '#0f172a'; // slate-900
+    root.classList.add('dark-theme');
+    root.classList.remove('light-theme');
+    document.body.style.backgroundColor = '#000000';
   }
 };
 
 interface SettingsState {
-  oledMode: boolean;
-  setOledMode: (enabled: boolean) => void;
-  toggleOledMode: () => void;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  toggleTheme: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
-      oledMode: true, // Default to OLED mode (true black backgrounds)
+      theme: 'dark', // Default to dark mode
 
-      setOledMode: (enabled) => {
-        set({ oledMode: enabled });
-        applyOledMode(enabled);
+      setTheme: (theme) => {
+        set({ theme });
+        applyTheme(theme);
       },
 
-      toggleOledMode: () => {
-        const newValue = !get().oledMode;
-        set({ oledMode: newValue });
-        applyOledMode(newValue);
+      toggleTheme: () => {
+        const newTheme = get().theme === 'dark' ? 'light' : 'dark';
+        set({ theme: newTheme });
+        applyTheme(newTheme);
       },
     }),
     {
       name: 'spectrascope-settings',
       storage: createJSONStorage(() => localStorage),
       onRehydrateStorage: () => (state) => {
-        // Apply OLED mode on initial load after hydration
+        // Apply theme on initial load after hydration
         if (state) {
-          applyOledMode(state.oledMode);
+          applyTheme(state.theme);
         }
       },
     }
   )
 );
 
-// Apply OLED mode immediately on module load (before React renders)
+// Apply theme immediately on module load (before React renders)
 if (typeof window !== 'undefined') {
   try {
     const stored = localStorage.getItem('spectrascope-settings');
     if (stored) {
       const parsed = JSON.parse(stored);
-      if (parsed.state?.oledMode !== false) {
-        // Default is true, so apply OLED unless explicitly disabled
-        document.documentElement.classList.add('oled-mode');
-        document.body.style.backgroundColor = '#000000';
-      }
+      const theme = parsed.state?.theme || 'dark';
+      applyTheme(theme);
     } else {
-      // No stored setting, apply default (OLED on)
-      document.documentElement.classList.add('oled-mode');
-      document.body.style.backgroundColor = '#000000';
+      // Default is dark
+      applyTheme('dark');
     }
   } catch {
-    // On error, apply OLED mode as default
-    document.documentElement.classList.add('oled-mode');
-    document.body.style.backgroundColor = '#000000';
+    applyTheme('dark');
   }
 }
