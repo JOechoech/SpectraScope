@@ -499,6 +499,13 @@ YOUR RESPONSIBILITIES:
    - What would change your view
    - Time horizon considerations
 
+7. RATE each source's sentiment (bullish/bearish/neutral) on a 1-10 scale:
+   - 1-3: Bearish (negative indicators, risks, downtrends)
+   - 4-5: Slightly Bearish to Neutral
+   - 5: Neutral (mixed signals)
+   - 6-7: Slightly Bullish
+   - 8-10: Bullish (positive indicators, catalysts, uptrends)
+
 OUTPUT FORMAT: Valid JSON only, no markdown formatting.
 
 JSON Structure:
@@ -509,8 +516,20 @@ JSON Structure:
   "confidence": number,
   "reasoning": string,
   "sourcesUsed": string[],
-  "bottomLine": string
-}`;
+  "bottomLine": string,
+  "overallSentiment": "bullish" | "bearish" | "neutral",
+  "overallScore": number,
+  "sourceAssessments": [
+    {
+      "source": "Technical Analysis",
+      "sentiment": "bullish" | "bearish" | "neutral",
+      "score": number,
+      "reason": "one sentence why"
+    }
+  ]
+}
+
+Only include sources in sourceAssessments that actually provided data.`;
 
 /**
  * Build multi-source prompt from aggregated intelligence
@@ -635,6 +654,18 @@ export async function synthesizeFromIntelligence(
     const optionsReport = intelligence.reports.find(r => r.source === 'options-flow');
     const optionsFlow = optionsReport?.data?.institutionalFlow || 'balanced';
 
+    // Normalize source assessments
+    const sourceAssessments = Array.isArray(parsed.sourceAssessments)
+      ? parsed.sourceAssessments.map((a: Record<string, unknown>) => ({
+          source: typeof a.source === 'string' ? a.source : 'Unknown',
+          sentiment: ['bullish', 'bearish', 'neutral'].includes(a.sentiment as string)
+            ? (a.sentiment as 'bullish' | 'bearish' | 'neutral')
+            : 'neutral',
+          score: typeof a.score === 'number' ? Math.min(10, Math.max(1, a.score)) : 5,
+          reason: typeof a.reason === 'string' ? a.reason : '',
+        }))
+      : [];
+
     // Build result
     const result: DeepDiveResult = {
       timestamp: new Date().toISOString(),
@@ -653,6 +684,13 @@ export async function synthesizeFromIntelligence(
       confidence: Math.min(100, Math.max(0, parsed.confidence || 70)),
       reasoning: parsed.reasoning || 'Analysis synthesized from available intelligence sources.',
       bottomLine: parsed.bottomLine || 'Review the scenarios above for a comprehensive view of potential outcomes.',
+      overallSentiment: ['bullish', 'bearish', 'neutral'].includes(parsed.overallSentiment)
+        ? parsed.overallSentiment
+        : 'neutral',
+      overallScore: typeof parsed.overallScore === 'number'
+        ? Math.min(10, Math.max(1, parsed.overallScore))
+        : 5,
+      sourceAssessments,
       tokenUsage: {
         input: inputTokens,
         output: outputTokens,

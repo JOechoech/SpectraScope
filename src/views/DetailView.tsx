@@ -25,6 +25,7 @@ import { AIInsightsPanel } from '@/components/analysis/AIInsightsPanel';
 import { BottomLine } from '@/components/analysis/BottomLine';
 import { HoldingsInput } from '@/components/portfolio/HoldingsInput';
 import { WarpAnimation } from '@/components/effects/WarpAnimation';
+import { IntelligenceReport, type SourceReport, type ClaudeAssessment } from '@/components/analysis/IntelligenceReport';
 import {
   getQuote,
   getDailyData,
@@ -55,6 +56,8 @@ interface DetailViewProps {
   onBack: () => void;
 }
 
+type AnalysisPhase = 'idle' | 'gathering' | 'report' | 'results';
+
 interface AnalysisResult {
   scenarios: {
     bull: Scenario;
@@ -66,6 +69,9 @@ interface AnalysisResult {
   availableSources: string[];
   missingSources: string[];
   intelligenceReports: AnyIntelligenceReport[];
+  overallSentiment?: 'bullish' | 'bearish' | 'neutral';
+  overallScore?: number;
+  sourceAssessments?: ClaudeAssessment[];
   tokenUsage?: {
     input: number;
     output: number;
@@ -91,8 +97,11 @@ export const DetailView = memo(function DetailView({
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isLoadingPrice, setIsLoadingPrice] = useState(true);
   const [isLoadingNews, setIsLoadingNews] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 3-phase analysis flow
+  const [analysisPhase, setAnalysisPhase] = useState<AnalysisPhase>('idle');
+  const [sourceReports, setSourceReports] = useState<SourceReport[]>([]);
 
   const companyName =
     watchlistItems.find((w) => w.symbol === symbol)?.name ||
@@ -162,12 +171,12 @@ export const DetailView = memo(function DetailView({
   const runAnalysis = useCallback(async () => {
     if (!anthropicKey || !quote) return;
 
-    setIsAnalyzing(true);
+    setAnalysisPhase('gathering');
     setError(null);
 
     // Track start time for minimum animation duration
     const startTime = Date.now();
-    const MIN_ANIMATION_TIME = 3000; // 3 seconds minimum
+    const MIN_ANIMATION_TIME = 6000; // 6 seconds for AI arrivals
 
     try {
       // Gather intelligence from all sources
@@ -190,7 +199,55 @@ export const DetailView = memo(function DetailView({
         await new Promise((r) => setTimeout(r, MIN_ANIMATION_TIME - elapsed));
       }
 
-      // Build analysis result
+      // Build source reports for Intelligence Report
+      const reports: SourceReport[] = [
+        {
+          id: 'technical',
+          name: 'Technical Analysis',
+          icon: '📊',
+          delivered: true,
+          summary: 'Patterns analyzed',
+        },
+        {
+          id: 'news',
+          name: 'News Sentiment',
+          icon: '📰',
+          delivered: intelligence.availableSources.includes('news-sentiment'),
+          tokensUsed: intelligence.availableSources.includes('news-sentiment') ? 150 : 0,
+          summary: intelligence.availableSources.includes('news-sentiment') ? 'Headlines scanned' : undefined,
+          error: !intelligence.availableSources.includes('news-sentiment') ? 'No API key' : undefined,
+        },
+        {
+          id: 'grok',
+          name: 'Grok (X/Twitter)',
+          icon: '𝕏',
+          delivered: intelligence.availableSources.includes('social-sentiment'),
+          tokensUsed: intelligence.availableSources.includes('social-sentiment') ? 480 : 0, // Estimated
+          summary: intelligence.availableSources.includes('social-sentiment') ? 'Social sentiment analyzed' : undefined,
+          error: !intelligence.availableSources.includes('social-sentiment') ? 'No API key' : undefined,
+        },
+        {
+          id: 'gemini',
+          name: 'Gemini (Research)',
+          icon: '✦',
+          delivered: intelligence.availableSources.includes('web-research'),
+          tokensUsed: intelligence.availableSources.includes('web-research') ? 620 : 0, // Estimated
+          summary: intelligence.availableSources.includes('web-research') ? 'Analyst data retrieved' : undefined,
+          error: !intelligence.availableSources.includes('web-research') ? 'No API key' : undefined,
+        },
+        {
+          id: 'claude',
+          name: 'Claude (Synthesis)',
+          icon: '🧠',
+          delivered: true,
+          tokensUsed: (result.tokenUsage?.input || 0) + (result.tokenUsage?.output || 0),
+          summary: 'Master analysis complete',
+        },
+      ];
+
+      setSourceReports(reports);
+
+      // Build analysis result with new fields
       const analysisResult: AnalysisResult = {
         scenarios: result.scenarios,
         confidence: result.confidence || 75,
@@ -198,6 +255,9 @@ export const DetailView = memo(function DetailView({
         availableSources: intelligence.availableSources,
         missingSources: intelligence.missingSources,
         intelligenceReports: intelligence.reports,
+        overallSentiment: result.overallSentiment,
+        overallScore: result.overallScore,
+        sourceAssessments: result.sourceAssessments,
         tokenUsage: result.tokenUsage,
       };
 
@@ -224,11 +284,14 @@ export const DetailView = memo(function DetailView({
         cost: result.tokenUsage?.cost || 0,
         dominantScenario: 'base',
       });
+
+      // Move to report phase
+      setAnalysisPhase('report');
+
     } catch (err) {
       console.error('Analysis failed:', err);
       setError('Analysis failed. Please try again.');
-    } finally {
-      setIsAnalyzing(false);
+      setAnalysisPhase('idle');
     }
   }, [symbol, companyName, priceData, quote, anthropicKey, addAnalysis]);
 
@@ -236,10 +299,27 @@ export const DetailView = memo(function DetailView({
     return <DetailViewSkeleton onBack={onBack} symbol={symbol} />;
   }
 
+  // Calculate totals for Intelligence Report
+  const totalTokens = sourceReports.reduce((sum, s) => sum + (s.tokensUsed || 0), 0);
+  const estimatedCost = analysis?.tokenUsage?.cost || (totalTokens * 0.00003);
+
   return (
     <>
       {/* Warp Animation Overlay */}
-      <WarpAnimation isActive={isAnalyzing} />
+      <WarpAnimation isActive={analysisPhase === 'gathering'} />
+
+      {/* Intelligence Report Overlay */}
+      {analysisPhase === 'report' && analysis && (
+        <IntelligenceReport
+          sources={sourceReports}
+          assessments={analysis.sourceAssessments || []}
+          overallSentiment={analysis.overallSentiment || 'neutral'}
+          overallScore={analysis.overallScore || 5}
+          totalTokens={totalTokens}
+          estimatedCost={estimatedCost}
+          onContinue={() => setAnalysisPhase('results')}
+        />
+      )}
 
       <div className="min-h-screen bg-black pb-24">
       {/* Header */}
@@ -305,10 +385,10 @@ export const DetailView = memo(function DetailView({
         <ScopeButton
           symbol={symbol}
           onAnalyze={runAnalysis}
-          isLoading={isAnalyzing}
+          isLoading={analysisPhase === 'gathering'}
           estimatedCost={{ min: 0.01, max: 0.04, avg: 0.025 }}
           hasApiKey={!!anthropicKey}
-          disabled={isLoadingPrice}
+          disabled={isLoadingPrice || analysisPhase !== 'idle'}
         />
 
         {/* Error Display */}
@@ -319,8 +399,8 @@ export const DetailView = memo(function DetailView({
           </div>
         )}
 
-        {/* Analysis Results */}
-        {analysis && (
+        {/* Analysis Results - only show when in 'results' phase */}
+        {analysisPhase === 'results' && analysis && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">AI Analysis</h3>
