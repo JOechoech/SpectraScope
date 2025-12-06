@@ -21,6 +21,9 @@
     --color-bear: #f43f5e;
     --color-neutral: #3b82f6;
 
+    /* Theme color - updated dynamically per tab */
+    --theme-color: #000000;
+
     /* Safe area insets for iOS */
     --safe-area-inset-top: env(safe-area-inset-top, 0px);
     --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
@@ -1269,4 +1272,78 @@
 .light-theme .search-cloud-4,
 .light-theme .search-cloud-5 {
   opacity: 0.3;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BOTTOM NAVIGATION THEME STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.nav-theme-home {
+  background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(13,148,136,0.25) 100%);
+  border-top: 1px solid rgba(6,182,212,0.3);
+}
+
+.nav-theme-dream {
+  background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(124,58,237,0.35) 100%);
+  border-top: 1px solid rgba(139,92,246,0.4);
+}
+
+.nav-theme-scope {
+  background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(234,88,12,0.35) 100%);
+  border-top: 1px solid rgba(249,115,22,0.4);
+}
+
+.nav-theme-search {
+  background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(16,185,129,0.3) 100%);
+  border-top: 1px solid rgba(16,185,129,0.35);
+}
+
+.nav-theme-settings {
+  background: rgba(0,0,0,0.95);
+  border-top: 1px solid rgba(51,65,85,0.5);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SAFE AREA THEMING - iOS notch and home indicator
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Top safe area colored background */
+.theme-home::before,
+.theme-dream::before,
+.theme-scope::before,
+.theme-search::before,
+.theme-settings::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top, 0px);
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.theme-home::before {
+  background: linear-gradient(180deg, rgba(13,148,136,0.6) 0%, rgba(13,148,136,0.3) 100%);
+}
+
+.theme-dream::before {
+  background: linear-gradient(180deg, rgba(124,58,237,0.6) 0%, rgba(124,58,237,0.3) 100%);
+}
+
+.theme-scope::before {
+  background: linear-gradient(180deg, rgba(234,88,12,0.6) 0%, rgba(234,88,12,0.3) 100%);
+}
+
+.theme-search::before {
+  background: linear-gradient(180deg, rgba(16,185,129,0.6) 0%, rgba(16,185,129,0.3) 100%);
+}
+
+.theme-settings::before {
+  background: linear-gradient(180deg, rgba(30,41,59,0.8) 0%, rgba(30,41,59,0.4) 100%);
+}
+
+/* Bottom safe area matches nav theme */
+.safe-bottom {
+  padding-bottom: max(0.25rem, env(safe-area-inset-bottom, 0px));
 }

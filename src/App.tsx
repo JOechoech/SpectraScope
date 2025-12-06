@@ -19,11 +19,11 @@ const viewThemeMap: Record<ViewName, ThemeType> = {
   portfolio: 'home',
 };
 
-// Theme colors for iPhone status bar
+// Theme colors for iPhone status bar and safe areas
 const themeColors: Record<ThemeType, string> = {
   home: '#0d9488',      // teal-600
   dream: '#7c3aed',     // violet-600
-  scope: '#db2777',     // pink-600
+  scope: '#ea580c',     // orange-600 (matches header!)
   search: '#10b981',    // emerald-500
   settings: '#1e293b',  // slate-800
   default: '#000000',
@@ -47,12 +47,15 @@ const getThemeClass = (theme: ThemeType): string => {
   }
 };
 
-// Update meta theme-color for iOS status bar
+// Update meta theme-color for iOS status bar and CSS variable
 const updateThemeColor = (color: string) => {
+  // Update meta tag for native status bar
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
     meta.setAttribute('content', color);
   }
+  // Set CSS variable for safe-area backgrounds
+  document.documentElement.style.setProperty('--theme-color', color);
 };
 
 /**
