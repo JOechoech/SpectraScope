@@ -60,6 +60,9 @@ const updateThemeColor = (color: string) => {
 
   // Set CSS variable for safe-area backgrounds
   document.documentElement.style.setProperty('--theme-color', color);
+
+  // CRITICAL: Set html background color - this is what shows through transparent status bar
+  document.documentElement.style.backgroundColor = color;
 };
 
 /**
