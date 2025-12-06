@@ -12,6 +12,7 @@
 import { useState, useMemo, memo, useEffect, useCallback } from 'react';
 import { Edit2, Trash2, PieChart, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
 import { Header } from '@/components/layout';
+import { PortfolioAnalysis } from '@/components/portfolio/PortfolioAnalysis';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useQuoteCacheStore } from '@/stores/useQuoteCacheStore';
 import * as marketData from '@/services/marketData';
@@ -282,6 +283,16 @@ export const PortfolioView = memo(function PortfolioView({
           </div>
         )}
       </div>
+
+      {/* Portfolio Analysis */}
+      {portfolio.positions.length > 0 && (
+        <div className="px-5 py-4">
+          <PortfolioAnalysis
+            positions={portfolio.positions}
+            totalValue={portfolio.totalValue}
+          />
+        </div>
+      )}
 
       {/* Holdings List */}
       <div className="px-5 py-4 space-y-3">

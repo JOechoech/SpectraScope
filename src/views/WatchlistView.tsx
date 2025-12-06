@@ -14,6 +14,7 @@ import { Header } from '@/components/layout';
 import { StockCard } from '@/components/watchlist/StockCard';
 import { PortfolioSummary } from '@/components/portfolio/PortfolioSummary';
 import { NewsCarousel } from '@/components/news/NewsCarousel';
+import { ScopeSuggest } from '@/components/discovery/ScopeSuggest';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useStoreHydration } from '@/stores/useApiKeysStore';
 import { useQuoteCacheStore } from '@/stores/useQuoteCacheStore';
@@ -353,6 +354,11 @@ export const WatchlistView = memo(function WatchlistView({
             )
           }
         />
+      </div>
+
+      {/* Scope Suggest - Discover by Sector */}
+      <div className="px-5 mb-3">
+        <ScopeSuggest onSelectStock={onSelectStock} />
       </div>
 
       {/* Stock List */}
