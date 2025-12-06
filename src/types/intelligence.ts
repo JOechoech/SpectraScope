@@ -73,6 +73,8 @@ export interface NewsReportData {
   sentimentScore: number; // -1 to 1
   articleCount: number;
   topSources: string[];
+  keyTopics?: string[];     // Key topics from OpenAI analysis
+  marketImpact?: string;    // Market impact assessment
 }
 
 export interface NewsReport extends IntelligenceReport {

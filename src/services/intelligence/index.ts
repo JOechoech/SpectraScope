@@ -42,8 +42,8 @@ export function getAvailableSources(): IntelligenceSource[] {
   // Technical analysis is always available (client-side)
   sources.push('technical-analysis');
 
-  // News sentiment - NewsAPI
-  if (store.hasApiKey('newsapi')) {
+  // News sentiment - OpenAI (replaces NewsAPI/MediaStack)
+  if (store.hasApiKey('openai')) {
     sources.push('news-sentiment');
   }
 

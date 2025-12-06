@@ -70,8 +70,6 @@ const keyPatterns: Partial<Record<keyof ApiKeys, RegExp>> = {
   grok: /^xai-[a-zA-Z0-9]{20,}$/,
   gemini: /^[a-zA-Z0-9_-]{30,}$/,
   perplexity: /^pplx-[a-zA-Z0-9]{20,}$/,
-  newsapi: /^[a-z0-9]{20,}$/,
-  mediastack: /^[a-z0-9]{20,}$/,
 };
 
 // Hydration tracking
@@ -189,7 +187,7 @@ export const useApiKeysStore = create<ApiKeysState>()(
           if (state) {
             const providers: (keyof ApiKeys)[] = [
               'polygon', 'finnhub', 'anthropic', 'openai',
-              'grok', 'gemini', 'perplexity', 'newsapi', 'mediastack'
+              'grok', 'gemini', 'perplexity'
             ];
 
             providers.forEach((provider) => {

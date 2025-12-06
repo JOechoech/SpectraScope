@@ -181,13 +181,11 @@ export interface ApiKeys {
   polygon?: string;
   finnhub?: string;
   anthropic?: string;
-  openai?: string;
+  openai?: string;      // OpenAI for news analysis
   twitter?: string;
   grok?: string;        // xAI API for social sentiment
   gemini?: string;      // Google Gemini for web research
   perplexity?: string;  // Perplexity API for web research
-  newsapi?: string;     // NewsAPI for news headlines
-  mediastack?: string;  // MediaStack for additional news coverage
 }
 
 export interface UserSettings {
