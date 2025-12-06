@@ -40,7 +40,7 @@ const MARKET_INDICES = [
   { symbol: 'USO', name: 'Oil', icon: '\u{1F6E2}\u{FE0F}' },       // 🛢️
 ];
 
-// Default watchlist stocks
+// Default watchlist stocks (Magnificent 7)
 const DEFAULT_WATCHLIST = [
   { symbol: 'AAPL', name: 'Apple' },
   { symbol: 'MSFT', name: 'Microsoft' },
@@ -50,6 +50,9 @@ const DEFAULT_WATCHLIST = [
   { symbol: 'META', name: 'Meta' },
   { symbol: 'TSLA', name: 'Tesla' },
 ];
+
+// LocalStorage key for hidden default stocks
+const HIDDEN_DEFAULTS_KEY = 'spectrascope_hidden_defaults';
 
 // Company names lookup
 const COMPANY_NAMES: Record<string, string> = {
@@ -149,17 +152,43 @@ export const HomeView = memo(function HomeView({
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
 
+  // Hidden default stocks (Mag7 that user removed)
+  const [hiddenDefaults, setHiddenDefaults] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(HIDDEN_DEFAULTS_KEY);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
   const polygonKey = getApiKey('polygon');
 
-  // Default watchlist symbols
+  // Hide a default stock
+  const hideDefaultStock = useCallback((symbol: string) => {
+    setHiddenDefaults(prev => {
+      const next = new Set(prev);
+      next.add(symbol);
+      localStorage.setItem(HIDDEN_DEFAULTS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
+
+  // Default watchlist symbols (excluding hidden ones)
   const defaultWatchlistSymbols = useMemo(
     () => new Set(DEFAULT_WATCHLIST.map((s) => s.symbol)),
     []
   );
 
-  // Combined watchlist: defaults + user-added stocks from search
+  // Visible default stocks (filter out hidden)
+  const visibleDefaultStocks = useMemo(
+    () => DEFAULT_WATCHLIST.filter(s => !hiddenDefaults.has(s.symbol)),
+    [hiddenDefaults]
+  );
+
+  // Combined watchlist: visible defaults + user-added stocks from search
   const combinedWatchlist = useMemo(() => {
-    const result = [...DEFAULT_WATCHLIST];
+    const result = [...visibleDefaultStocks];
     const indicesSymbols = new Set(MARKET_INDICES.map((i) => i.symbol));
     watchlistItems.forEach((item) => {
       if (!defaultWatchlistSymbols.has(item.symbol) && !indicesSymbols.has(item.symbol)) {
@@ -167,7 +196,7 @@ export const HomeView = memo(function HomeView({
       }
     });
     return result;
-  }, [watchlistItems, defaultWatchlistSymbols]);
+  }, [watchlistItems, defaultWatchlistSymbols, visibleDefaultStocks]);
 
   // Holdings with shares > 0
   const holdingsWithShares = useMemo(
@@ -476,12 +505,16 @@ export const HomeView = memo(function HomeView({
                   key={stock.symbol}
                   className={`flex items-center px-3 py-2 bg-slate-800/30 border border-slate-700/50 rounded-xl ${glowClass}`}
                 >
-                  {/* Remove Button */}
-                  {isEditMode && isUserAdded && (
+                  {/* Remove Button - works for all stocks in edit mode */}
+                  {isEditMode && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        removeStock(stock.symbol);
+                        if (isUserAdded) {
+                          removeStock(stock.symbol);
+                        } else {
+                          hideDefaultStock(stock.symbol);
+                        }
                       }}
                       className="mr-2 w-5 h-5 rounded-full bg-rose-500 flex items-center justify-center flex-shrink-0"
                     >
