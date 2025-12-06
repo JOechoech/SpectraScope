@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, memo, useCallback, useRef } from 'react';
-import { ArrowLeft, RefreshCw, AlertCircle, Share2, Copy, Download, Check } from 'lucide-react';
+import { ArrowLeft, RefreshCw, AlertCircle, Share2, Copy, Download, Check, Tag, Trash2, X } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useAnalysisStore } from '@/stores/useAnalysisStore';
@@ -84,7 +84,7 @@ export const DetailView = memo(function DetailView({
 }: DetailViewProps) {
   const { getApiKey } = useApiKeysStore();
   const { addAnalysis, getLatestAnalysis } = useAnalysisStore();
-  const { items: watchlistItems } = useWatchlistStore();
+  const { items: watchlistItems, updateStock } = useWatchlistStore();
 
   const polygonKey = getApiKey('polygon');
   const anthropicKey = getApiKey('anthropic');
@@ -104,6 +104,17 @@ export const DetailView = memo(function DetailView({
   const [isExporting, setIsExporting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [showRemoveScopeConfirm, setShowRemoveScopeConfirm] = useState(false);
+
+  // Get scoped info for this stock
+  const watchlistItem = watchlistItems.find((w) => w.symbol === symbol);
+  const scopedInfo = watchlistItem?.scopedFrom ? {
+    from: watchlistItem.scopedFrom,
+    at: watchlistItem.scopedAt,
+    price: watchlistItem.scopedPrice,
+    sentiment: watchlistItem.scopedSentiment,
+    source: watchlistItem.scopedSource,
+  } : null;
 
   const companyName =
     watchlistItems.find((w) => w.symbol === symbol)?.name ||
@@ -112,6 +123,51 @@ export const DetailView = memo(function DetailView({
 
   // Cached analysis timestamp for age indicator
   const [cachedTimestamp, setCachedTimestamp] = useState<string | null>(null);
+
+  // Sector emoji mapping
+  const SECTOR_EMOJIS: Record<string, string> = {
+    tech: '💻', biotech: '🧬', finance: '🏦', energy: '⚡',
+    healthcare: '🏥', retail: '🛒', gaming: '🎮', meme: '🚀',
+  };
+
+  // Format scoped date as DD.MM.YYYY at HH:MM
+  const formatScopedDateTime = (isoDate: string): string => {
+    const date = new Date(isoDate);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${day}.${month}.${year} at ${hours}:${minutes}`;
+  };
+
+  // Get sentiment badge
+  const getSentimentBadge = (sentiment?: 'bullish' | 'bearish' | 'neutral') => {
+    if (!sentiment) return { text: 'Neutral', color: 'text-slate-400', bg: 'bg-slate-500/20', icon: '⚪' };
+    if (sentiment === 'bullish') return { text: 'Bullish', color: 'text-emerald-400', bg: 'bg-emerald-500/20', icon: '🟢' };
+    if (sentiment === 'bearish') return { text: 'Bearish', color: 'text-rose-400', bg: 'bg-rose-500/20', icon: '🔴' };
+    return { text: 'Neutral', color: 'text-slate-400', bg: 'bg-slate-500/20', icon: '⚪' };
+  };
+
+  // Calculate performance since scope
+  const getScopePerformance = () => {
+    if (!scopedInfo?.price || scopedInfo.price === 0 || !quote?.price) return null;
+    const change = quote.price - scopedInfo.price;
+    const percentChange = ((change / scopedInfo.price) * 100);
+    return { change, percentChange };
+  };
+
+  // Remove scope tag handler
+  const handleRemoveScopeTag = () => {
+    updateStock(symbol, {
+      scopedFrom: undefined,
+      scopedAt: undefined,
+      scopedPrice: undefined,
+      scopedSentiment: undefined,
+      scopedSource: undefined,
+    });
+    setShowRemoveScopeConfirm(false);
+  };
 
   // Get precise age indicator with color
   const getAgeIndicator = (timestamp: string): { text: string; color: string; colorClass: string } => {
@@ -578,6 +634,123 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
         {/* Holdings Input */}
         {quote && (
           <HoldingsInput symbol={symbol} currentPrice={quote.price} />
+        )}
+
+        {/* Scoped Stock Info Section */}
+        {scopedInfo && (
+          <div className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+            <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-violet-400" />
+              Scoped Stock
+            </h3>
+
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Discovered via:</span>
+                <span className="text-slate-200">
+                  {scopedInfo.source === 'grok' ? '𝕏 Grok Social Scan' : '🧠 Full AI Scan'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Sector:</span>
+                <span className="text-slate-200">
+                  {SECTOR_EMOJIS[scopedInfo.from] || '📊'} {scopedInfo.from.charAt(0).toUpperCase() + scopedInfo.from.slice(1)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Scoped on:</span>
+                <span className="text-slate-200">
+                  {scopedInfo.at ? formatScopedDateTime(scopedInfo.at) : 'Unknown'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Sentiment at scope:</span>
+                <span className={`${getSentimentBadge(scopedInfo.sentiment).color} flex items-center gap-1`}>
+                  {getSentimentBadge(scopedInfo.sentiment).icon} {getSentimentBadge(scopedInfo.sentiment).text}
+                </span>
+              </div>
+            </div>
+
+            {/* Performance Since Scope */}
+            {scopedInfo.price && scopedInfo.price > 0 && quote && (
+              <>
+                <div className="border-t border-slate-700/50 my-3" />
+                <h4 className="text-slate-300 text-sm font-medium mb-2">📊 Performance Since Scope</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Price at scope:</span>
+                    <span className="text-slate-200">${scopedInfo.price.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Current price:</span>
+                    <span className="text-slate-200">${quote.price.toFixed(2)}</span>
+                  </div>
+                  {(() => {
+                    const perf = getScopePerformance();
+                    if (!perf) return null;
+                    const isUp = perf.percentChange >= 0;
+                    return (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Change:</span>
+                        <span className={isUp ? 'text-emerald-400' : 'text-rose-400'}>
+                          {isUp ? '📈' : '📉'} {isUp ? '+' : ''}${perf.change.toFixed(2)} ({isUp ? '+' : ''}{perf.percentChange.toFixed(1)}%)
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </>
+            )}
+
+            {/* Remove Scope Tag Button */}
+            <button
+              onClick={() => setShowRemoveScopeConfirm(true)}
+              className="mt-4 text-rose-400 text-sm flex items-center gap-1 hover:text-rose-300 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Remove Scope Tag
+            </button>
+          </div>
+        )}
+
+        {/* Remove Scope Tag Confirmation Modal */}
+        {showRemoveScopeConfirm && scopedInfo && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-white font-semibold text-lg">Remove Scope Tag?</h3>
+                <button
+                  onClick={() => setShowRemoveScopeConfirm(false)}
+                  className="text-slate-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-slate-400 text-sm mb-4">This will remove:</p>
+              <ul className="text-slate-300 text-sm space-y-1 mb-4 ml-4 list-disc">
+                <li>Scope date ({scopedInfo.at ? formatScopedDateTime(scopedInfo.at) : 'Unknown'})</li>
+                <li>Original sentiment ({getSentimentBadge(scopedInfo.sentiment).text})</li>
+                <li>Performance tracking</li>
+              </ul>
+              <p className="text-slate-400 text-sm mb-4">The stock will remain in your watchlist.</p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowRemoveScopeConfirm(false)}
+                  className="flex-1 py-2.5 bg-slate-700 text-white rounded-xl font-medium hover:bg-slate-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRemoveScopeTag}
+                  className="flex-1 py-2.5 bg-rose-600 text-white rounded-xl font-medium hover:bg-rose-500 transition-colors"
+                >
+                  Remove Tag
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Technical Signals (Auto-loads) */}

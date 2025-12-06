@@ -162,7 +162,7 @@ export const HomeView = memo(function HomeView({
   onOpenSettings,
 }: HomeViewProps) {
   const { getApiKey } = useApiKeysStore();
-  const { items: watchlistItems, removeStock, holdings } = useWatchlistStore();
+  const { items: watchlistItems, removeStock, updateStock, holdings } = useWatchlistStore();
   const cachedQuotes = useQuoteCacheStore((s) => s.quotes);
   const cachedDataSource = useQuoteCacheStore((s) => s.dataSource);
   const setQuotesCache = useQuoteCacheStore((s) => s.setQuotes);
@@ -333,6 +333,19 @@ export const HomeView = memo(function HomeView({
     });
     return change;
   }, [holdingsWithShares, quotes]);
+
+  // Update scopedPrice for newly scoped stocks when quote first loads
+  useEffect(() => {
+    watchlistItems.forEach((item) => {
+      // If stock was scoped but scopedPrice is 0 or undefined, update it
+      if (item.scopedFrom && (!item.scopedPrice || item.scopedPrice === 0)) {
+        const quote = quotes.get(item.symbol);
+        if (quote && quote.price > 0) {
+          updateStock(item.symbol, { scopedPrice: quote.price });
+        }
+      }
+    });
+  }, [watchlistItems, quotes, updateStock]);
 
   const formatTime = (date: Date) => {
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
