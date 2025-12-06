@@ -22,6 +22,26 @@ const POLYGON_BASE = 'https://api.polygon.io';
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Safe date string getter - NEVER throws!
+ * Returns today's date if input is invalid
+ */
+function safeGetDateString(timestamp: number | undefined | null): string {
+  try {
+    if (!timestamp || typeof timestamp !== 'number') {
+      return new Date().toISOString().split('T')[0];
+    }
+    const date = new Date(timestamp);
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return new Date().toISOString().split('T')[0];
+    }
+    return date.toISOString().split('T')[0];
+  } catch {
+    return new Date().toISOString().split('T')[0];
+  }
+}
+
 export interface PolygonTicker {
   ticker: string;
   todaysChangePerc: number;
@@ -207,7 +227,7 @@ export async function getBulkSnapshot(
         high: ticker.day?.h || ticker.prevDay?.h || 0,
         low: ticker.day?.l || ticker.prevDay?.l || 0,
         previousClose: ticker.prevDay?.c || 0,
-        latestTradingDay: new Date(ticker.updated).toISOString().split('T')[0],
+        latestTradingDay: safeGetDateString(ticker.updated),
       });
     }
 
@@ -247,7 +267,7 @@ export async function getQuote(
       high: ticker.day?.h || ticker.prevDay?.h || 0,
       low: ticker.day?.l || ticker.prevDay?.l || 0,
       previousClose: ticker.prevDay?.c || 0,
-      latestTradingDay: new Date(ticker.updated).toISOString().split('T')[0],
+      latestTradingDay: safeGetDateString(ticker.updated),
     };
   } catch (error) {
     console.error('Polygon quote error:', error);
@@ -282,7 +302,7 @@ export async function getDailyData(
     const data: PolygonAggregateResponse = await response.json();
 
     return data.results.map((bar) => ({
-      date: new Date(bar.t).toISOString().split('T')[0],
+      date: safeGetDateString(bar.t),
       open: bar.o,
       high: bar.h,
       low: bar.l,
