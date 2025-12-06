@@ -60,6 +60,8 @@ export interface StockCardProps {
   scopedAt?: string;
   /** Price when scoped */
   scopedPrice?: number;
+  /** Sentiment when scoped */
+  scopedSentiment?: 'bullish' | 'bearish' | 'neutral';
   /** Click handler */
   onClick?: () => void;
 }
@@ -75,6 +77,7 @@ export const StockCard = memo(function StockCard({
   scopedFrom,
   scopedAt,
   scopedPrice,
+  scopedSentiment,
   onClick,
 }: StockCardProps) {
   const { holdings } = useWatchlistStore();
@@ -132,6 +135,20 @@ export const StockCard = memo(function StockCard({
               <span className="text-xs text-purple-400">
                 {SECTOR_ICONS[scopedFrom] || '📊'} {scopedFrom.charAt(0).toUpperCase() + scopedFrom.slice(1)}
               </span>
+              {scopedSentiment && (
+                <>
+                  <span className="text-xs text-slate-500">•</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                    scopedSentiment === 'bullish'
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : scopedSentiment === 'bearish'
+                      ? 'bg-rose-500/20 text-rose-400'
+                      : 'bg-slate-500/20 text-slate-400'
+                  }`}>
+                    {scopedSentiment.toUpperCase()}
+                  </span>
+                </>
+              )}
               <span className="text-xs text-slate-500">•</span>
               <span className="text-xs text-slate-500">{formatScopedDate(scopedAt)}</span>
             </div>

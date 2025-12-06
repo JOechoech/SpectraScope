@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, memo, useCallback, useRef } from 'react';
-import { ArrowLeft, RefreshCw, AlertCircle, Share2, Copy, Download, Check, Tag, Trash2, X } from 'lucide-react';
+import { ArrowLeft, RefreshCw, AlertCircle, Share2, Copy, Download, Check, Tag, Trash2, X, Archive, History } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useAnalysisStore } from '@/stores/useAnalysisStore';
@@ -83,7 +83,7 @@ export const DetailView = memo(function DetailView({
   onBack,
 }: DetailViewProps) {
   const { getApiKey } = useApiKeysStore();
-  const { addAnalysis, getLatestAnalysis } = useAnalysisStore();
+  const { addAnalysis, getLatestAnalysis, getHistory } = useAnalysisStore();
   const { items: watchlistItems, updateStock } = useWatchlistStore();
 
   const polygonKey = getApiKey('polygon');
@@ -105,6 +105,13 @@ export const DetailView = memo(function DetailView({
   const [copied, setCopied] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showRemoveScopeConfirm, setShowRemoveScopeConfirm] = useState(false);
+  const [showHistoryArchive, setShowHistoryArchive] = useState(false);
+
+  // Get analysis history for this stock
+  const analysisHistory = getHistory(symbol);
+  const MAX_VISIBLE_HISTORY = 5;
+  const recentHistory = analysisHistory.slice(0, MAX_VISIBLE_HISTORY);
+  const archivedHistory = analysisHistory.slice(MAX_VISIBLE_HISTORY);
 
   // Get scoped info for this stock
   const watchlistItem = watchlistItems.find((w) => w.symbol === symbol);
@@ -918,6 +925,135 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
                 {analysis.tokenUsage.input + analysis.tokenUsage.output}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Analysis History Section */}
+        {analysisHistory.length > 1 && (
+          <div className="mt-6 bg-slate-900/50 border border-slate-800/50 rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-800/50 flex items-center justify-between">
+              <h3 className="text-white font-medium flex items-center gap-2">
+                <History className="w-4 h-4 text-purple-400" />
+                Prediction History
+              </h3>
+              <span className="text-slate-500 text-xs">
+                {analysisHistory.length} analyses
+              </span>
+            </div>
+            <div className="p-3 space-y-2">
+              {recentHistory.slice(1).map((entry) => {
+                const entryDate = new Date(entry.timestamp);
+                const formattedDate = `${entryDate.getDate().toString().padStart(2, '0')}.${(entryDate.getMonth() + 1).toString().padStart(2, '0')}.${entryDate.getFullYear()}`;
+                const ageIndicator = getAgeIndicator(entry.timestamp);
+                const dominantScenario = entry.result?.[entry.dominantScenario];
+
+                return (
+                  <div
+                    key={entry.id}
+                    className="bg-slate-800/50 rounded-xl p-3"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-slate-400 text-sm">
+                        Analysis from {formattedDate}
+                      </span>
+                      <span className={`text-xs ${ageIndicator.colorClass}`}>
+                        {ageIndicator.text}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        entry.dominantScenario === 'bull' ? 'bg-emerald-500/20 text-emerald-400' :
+                        entry.dominantScenario === 'bear' ? 'bg-rose-500/20 text-rose-400' :
+                        'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {entry.dominantScenario.charAt(0).toUpperCase() + entry.dominantScenario.slice(1)} Case
+                      </span>
+                      {dominantScenario?.priceTarget && (
+                        <span className="text-slate-500 text-xs">
+                          Target: {dominantScenario.priceTarget}
+                        </span>
+                      )}
+                      <span className="text-slate-600 text-xs ml-auto">
+                        ${entry.cost.toFixed(4)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Archive Button */}
+            {archivedHistory.length > 0 && (
+              <div className="px-3 pb-3">
+                <button
+                  onClick={() => setShowHistoryArchive(true)}
+                  className="w-full py-2.5 text-slate-400 border border-slate-700 rounded-xl hover:bg-slate-800/50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Archive className="w-4 h-4" />
+                  View Archive ({archivedHistory.length} older analyses)
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* History Archive Modal */}
+        {showHistoryArchive && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-4 border-b border-slate-800 sticky top-0 bg-slate-900">
+                <h3 className="text-white font-semibold flex items-center gap-2">
+                  <Archive className="w-5 h-5 text-slate-400" />
+                  Analysis Archive
+                </h3>
+                <button
+                  onClick={() => setShowHistoryArchive(false)}
+                  className="p-2 text-slate-400 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-4 space-y-2">
+                {archivedHistory.map((entry) => {
+                  const entryDate = new Date(entry.timestamp);
+                  const formattedDate = `${entryDate.getDate().toString().padStart(2, '0')}.${(entryDate.getMonth() + 1).toString().padStart(2, '0')}.${entryDate.getFullYear()}`;
+                  const ageIndicator = getAgeIndicator(entry.timestamp);
+                  const dominantScenario = entry.result?.[entry.dominantScenario];
+
+                  return (
+                    <div
+                      key={entry.id}
+                      className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-3"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-slate-400 text-sm">
+                          {formattedDate}
+                        </span>
+                        <span className={`text-xs ${ageIndicator.colorClass}`}>
+                          {ageIndicator.text}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          entry.dominantScenario === 'bull' ? 'bg-emerald-500/20 text-emerald-400' :
+                          entry.dominantScenario === 'bear' ? 'bg-rose-500/20 text-rose-400' :
+                          'bg-slate-500/20 text-slate-400'
+                        }`}>
+                          {entry.dominantScenario.charAt(0).toUpperCase() + entry.dominantScenario.slice(1)} Case
+                        </span>
+                        {dominantScenario?.priceTarget && (
+                          <span className="text-slate-500 text-xs">
+                            Target: {dominantScenario.priceTarget}
+                          </span>
+                        )}
+                        <span className="text-slate-600 text-xs ml-auto">
+                          ${entry.cost.toFixed(4)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>
