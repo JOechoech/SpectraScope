@@ -2,25 +2,23 @@ import { memo, useMemo } from 'react';
 
 /**
  * ScopeEffects - Electric pink/orange theme effects
- * Features: Lightning flashes and electric sparks
+ * Features: Orange clouds and subtle lightning flashes
  */
 export const ScopeEffects = memo(function ScopeEffects() {
-  // Generate electric spark particles
-  const sparks = useMemo(() => {
-    return Array.from({ length: 12 }, (_, i) => ({
-      id: i,
-      left: i < 6 ? `${Math.random() * 15}%` : `${85 + Math.random() * 15}%`,
-      top: `${20 + Math.random() * 60}%`,
-      delay: `${Math.random() * 4}s`,
-      size: `${2 + Math.random() * 3}px`,
-    }));
-  }, []);
+  // Generate orange cloud positions
+  const clouds = useMemo(() => [
+    { id: 1, className: 'scope-cloud-1', style: { left: '0%', top: '5%' } },
+    { id: 2, className: 'scope-cloud-2', style: { right: '5%', top: '8%' } },
+    { id: 3, className: 'scope-cloud-3', style: { left: '25%', top: '3%' } },
+    { id: 4, className: 'scope-cloud-4', style: { right: '20%', top: '12%' } },
+    { id: 5, className: 'scope-cloud-5', style: { left: '50%', top: '6%' } },
+    { id: 6, className: 'scope-cloud-6', style: { left: '70%', top: '2%' } },
+  ], []);
 
   // Generate lightning bolt positions
   const lightningBolts = useMemo(() => [
     { id: 1, position: 'left', delay: '0s' },
-    { id: 2, position: 'right', delay: '2s' },
-    { id: 3, position: 'left', delay: '4s' },
+    { id: 2, position: 'right', delay: '3s' },
   ], []);
 
   return (
@@ -28,20 +26,35 @@ export const ScopeEffects = memo(function ScopeEffects() {
       {/* Background gradient overlay */}
       <div className="fixed inset-0 pointer-events-none z-0 scope-gradient-overlay" />
 
-      {/* Electric sparks layer */}
-      <div className="fixed inset-0 pointer-events-none z-[2] overflow-hidden">
-        {sparks.map((spark) => (
+      {/* Orange clouds layer */}
+      <div className="fixed inset-0 pointer-events-none z-[1] overflow-hidden">
+        {clouds.map((cloud) => (
           <div
-            key={spark.id}
-            className="scope-spark"
-            style={{
-              left: spark.left,
-              top: spark.top,
-              animationDelay: spark.delay,
-              width: spark.size,
-              height: spark.size,
-            }}
-          />
+            key={cloud.id}
+            className={`absolute ${cloud.className}`}
+            style={cloud.style}
+          >
+            <svg
+              viewBox="0 0 120 60"
+              className="w-40 h-20 md:w-56 md:h-28"
+              fill="none"
+            >
+              {/* Cloud shape with blur */}
+              <defs>
+                <filter id={`scope-blur-${cloud.id}`} x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur in="SourceGraphic" stdDeviation="4" />
+                </filter>
+                <linearGradient id={`scopeCloudGrad-${cloud.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="rgba(251, 146, 60, 0.35)" />
+                  <stop offset="50%" stopColor="rgba(249, 115, 22, 0.25)" />
+                  <stop offset="100%" stopColor="rgba(234, 88, 12, 0.15)" />
+                </linearGradient>
+              </defs>
+              <ellipse cx="35" cy="35" rx="30" ry="18" fill={`url(#scopeCloudGrad-${cloud.id})`} filter={`url(#scope-blur-${cloud.id})`} />
+              <ellipse cx="60" cy="28" rx="35" ry="22" fill={`url(#scopeCloudGrad-${cloud.id})`} filter={`url(#scope-blur-${cloud.id})`} />
+              <ellipse cx="85" cy="35" rx="28" ry="16" fill={`url(#scopeCloudGrad-${cloud.id})`} filter={`url(#scope-blur-${cloud.id})`} />
+            </svg>
+          </div>
         ))}
       </div>
 
