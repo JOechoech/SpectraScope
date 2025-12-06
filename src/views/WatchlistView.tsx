@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useMemo, memo, useCallback, useRef } from 'react';
-import { Search, RefreshCw, Zap, Clock, AlertCircle, Loader2, Briefcase, ChevronRight } from 'lucide-react';
+import { Search, RefreshCw, Zap, AlertCircle, Loader2, Briefcase, ChevronRight } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { StockCard } from '@/components/watchlist/StockCard';
 import { PortfolioSummary } from '@/components/portfolio/PortfolioSummary';
@@ -322,18 +322,6 @@ export const WatchlistView = memo(function WatchlistView({
             </div>
             {lastFetch && (
               <span className="text-emerald-400/60 text-xs">
-                {Math.round((Date.now() - lastFetch) / 1000)}s ago
-              </span>
-            )}
-          </div>
-        ) : cachedDataSource === 'alphavantage' ? (
-          <div className="flex items-center justify-between p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-            <div className="flex items-center gap-2">
-              <Clock size={16} className="text-amber-400" />
-              <p className="text-amber-400 text-sm">Delayed via Alpha Vantage</p>
-            </div>
-            {lastFetch && (
-              <span className="text-amber-400/60 text-xs">
                 {Math.round((Date.now() - lastFetch) / 1000)}s ago
               </span>
             )}

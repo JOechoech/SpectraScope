@@ -1,20 +1,14 @@
 /**
- * Unified Market Data Service
+ * Unified Market Data Service - POLYGON ONLY
  *
- * Auto-selects the best available data source based on configured API keys:
- * 1. Polygon.io (Premium) - Real-time, bulk loading, options
- * 2. Alpha Vantage (Free) - Delayed quotes, rate limited
- * 3. Mock Data - Fallback when no keys available
+ * Data source hierarchy:
+ * 1. Polygon.io (when key exists) - Real-time, bulk loading
+ * 2. Mock Data - Fallback when no keys available
  *
- * Key Features:
- * - getBulkQuotes: One API call for entire watchlist (Polygon)
- * - getQuote: Single stock quote
- * - getDailyData: Historical price data
- * - Graceful degradation through fallback chain
+ * NO Alpha Vantage fallback - it's too slow and rate limited.
  */
 
 import * as polygon from './api/polygon';
-import * as alphavantage from './api/alphavantage';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import type { StockQuote, HistoricalDataPoint } from '@/types';
 
@@ -22,7 +16,7 @@ import type { StockQuote, HistoricalDataPoint } from '@/types';
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type DataSource = 'polygon' | 'alphavantage' | 'mock';
+export type DataSource = 'polygon' | 'mock';
 
 export interface MarketDataResult<T> {
   data: T;
@@ -38,119 +32,149 @@ export interface BulkQuotesResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SIMPLE CACHE
+// MODULE-LEVEL CACHE (survives component navigation)
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface CacheEntry<T> {
-  data: T;
+interface QuoteCache {
+  quotes: Map<string, StockQuote>;
   source: DataSource;
   timestamp: number;
 }
 
-const quoteCache = new Map<string, CacheEntry<StockQuote>>();
-const dailyCache = new Map<string, CacheEntry<HistoricalDataPoint[]>>();
+let QUOTE_CACHE: QuoteCache | null = null;
+const CACHE_TTL = 60 * 1000; // 60 seconds
 
-const CACHE_TTL = {
-  quote: 60 * 1000,      // 1 minute for quotes
-  daily: 5 * 60 * 1000,  // 5 minutes for daily data
-};
-
-function isCacheValid<T>(entry: CacheEntry<T> | undefined, ttl: number): boolean {
-  if (!entry) return false;
-  return Date.now() - entry.timestamp < ttl;
-}
+const dailyCache = new Map<string, { data: HistoricalDataPoint[]; source: DataSource; timestamp: number }>();
+const DAILY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // ═══════════════════════════════════════════════════════════════════════════
-// HELPER: Get Available Data Source
-// ═══════════════════════════════════════════════════════════════════════════
-
-function getPreferredSource(): { source: DataSource; apiKey: string | null } {
-  const { getApiKey } = useApiKeysStore.getState();
-
-  // POLYGON FIRST - check with trim to handle whitespace
-  const polygonKey = getApiKey('polygon');
-  if (polygonKey && polygonKey.trim().length > 5) {
-    console.log('[MarketData] Using POLYGON');
-    return { source: 'polygon', apiKey: polygonKey };
-  }
-
-  // Alpha Vantage fallback
-  const alphaKey = getApiKey('alphavantage');
-  if (alphaKey && alphaKey.trim().length > 5) {
-    console.log('[MarketData] Using ALPHA VANTAGE');
-    return { source: 'alphavantage', apiKey: alphaKey };
-  }
-
-  console.log('[MarketData] Using MOCK');
-  return { source: 'mock', apiKey: null };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// BULK QUOTES (Main advantage of Polygon)
+// CACHE ACCESS FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Get quotes for multiple symbols in a single API call (when using Polygon)
- * Falls back to sequential calls with Alpha Vantage, or mock data
+ * Get cached quotes if available
  */
-export async function getBulkQuotes(symbols: string[]): Promise<BulkQuotesResult> {
-  const { source, apiKey } = getPreferredSource();
+export function getCachedQuotes(): Map<string, StockQuote> | null {
+  if (!QUOTE_CACHE) return null;
+  return QUOTE_CACHE.quotes;
+}
+
+/**
+ * Check if cache is still fresh
+ */
+export function isCacheFresh(): boolean {
+  if (!QUOTE_CACHE) return false;
+  return Date.now() - QUOTE_CACHE.timestamp < CACHE_TTL;
+}
+
+/**
+ * Get current data source from cache
+ */
+export function getDataSource(): DataSource | null {
+  return QUOTE_CACHE?.source ?? null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER: Get Polygon Key
+// ═══════════════════════════════════════════════════════════════════════════
+
+function getPolygonKey(): string | null {
+  const { getApiKey } = useApiKeysStore.getState();
+  const key = getApiKey('polygon');
+  if (key && key.trim().length > 5) {
+    return key;
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FETCH QUOTES - Main function
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Fetch fresh quotes from API (Polygon only, fallback to mock)
+ */
+export async function fetchQuotes(symbols: string[]): Promise<BulkQuotesResult> {
+  const polygonKey = getPolygonKey();
   const errors: string[] = [];
 
-  // Try Polygon first (supports true bulk)
-  if (source === 'polygon' && apiKey) {
+  // Try Polygon ONLY
+  if (polygonKey) {
     try {
-      const quotes = await polygon.getBulkSnapshot(symbols, apiKey);
+      console.log('[MarketData] Fetching from Polygon...');
+      const quotes = await polygon.getBulkSnapshot(symbols, polygonKey);
 
-      // Cache each quote
-      const now = Date.now();
-      for (const [symbol, quote] of quotes) {
-        quoteCache.set(symbol, { data: quote, source: 'polygon', timestamp: now });
-      }
+      // Update cache
+      QUOTE_CACHE = {
+        quotes,
+        source: 'polygon',
+        timestamp: Date.now(),
+      };
 
+      console.log('[MarketData] Polygon success:', quotes.size, 'quotes');
       return { quotes, source: 'polygon', errors };
     } catch (error) {
-      errors.push(`Polygon error: ${error}`);
-      // Fall through to Alpha Vantage
+      console.error('[MarketData] Polygon error:', error);
+      errors.push(`Polygon: ${error}`);
+      // Fall through to mock
     }
   }
 
-  // Try Alpha Vantage (sequential with rate limiting)
-  const { getApiKey } = useApiKeysStore.getState();
-  const alphaKey = getApiKey('alphavantage');
-
-  if (alphaKey) {
-    const quotes = new Map<string, StockQuote>();
-    const now = Date.now();
-
-    for (const symbol of symbols) {
-      // Check cache first
-      const cached = quoteCache.get(symbol);
-      if (isCacheValid(cached, CACHE_TTL.quote)) {
-        quotes.set(symbol, cached!.data);
-        continue;
-      }
-
-      try {
-        // Rate limit: 5 calls/minute for free tier
-        await delay(1200);
-        const quote = await alphavantage.getQuote(symbol, alphaKey);
-        quotes.set(symbol, quote);
-        quoteCache.set(symbol, { data: quote, source: 'alphavantage', timestamp: now });
-      } catch (error) {
-        errors.push(`${symbol}: ${error}`);
-        // Use mock as individual fallback
-        const mockQuote = polygon.getMockQuote(symbol);
-        quotes.set(symbol, mockQuote);
-      }
-    }
-
-    return { quotes, source: 'alphavantage', errors };
-  }
-
-  // Fallback to mock
+  // Mock fallback
+  console.log('[MarketData] Using MOCK data');
   const mockQuotes = polygon.getMockBulkSnapshot(symbols);
+
+  QUOTE_CACHE = {
+    quotes: mockQuotes,
+    source: 'mock',
+    timestamp: Date.now(),
+  };
+
   return { quotes: mockQuotes, source: 'mock', errors };
+}
+
+/**
+ * Get quotes - uses cache if fresh, otherwise fetches
+ */
+export async function getQuotes(symbols: string[]): Promise<BulkQuotesResult> {
+  // Return cache if fresh
+  if (QUOTE_CACHE && isCacheFresh()) {
+    console.log('[MarketData] Using cached quotes');
+    return {
+      quotes: QUOTE_CACHE.quotes,
+      source: QUOTE_CACHE.source,
+      errors: [],
+    };
+  }
+
+  // Fetch fresh
+  return fetchQuotes(symbols);
+}
+
+/**
+ * Refresh quotes in background (returns cached immediately)
+ */
+export async function refreshInBackground(symbols: string[]): Promise<BulkQuotesResult> {
+  // Return current cache immediately
+  const currentCache = QUOTE_CACHE
+    ? { quotes: QUOTE_CACHE.quotes, source: QUOTE_CACHE.source, errors: [] as string[] }
+    : { quotes: new Map<string, StockQuote>(), source: 'mock' as DataSource, errors: [] as string[] };
+
+  // Fetch in background (don't await)
+  fetchQuotes(symbols).catch(console.error);
+
+  return currentCache;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEGACY COMPATIBILITY - getBulkQuotes
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Legacy function - wraps getQuotes
+ */
+export async function getBulkQuotes(symbols: string[]): Promise<BulkQuotesResult> {
+  return getQuotes(symbols);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -158,49 +182,36 @@ export async function getBulkQuotes(symbols: string[]): Promise<BulkQuotesResult
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Get single stock quote with automatic source selection
+ * Get single stock quote
  */
 export async function getQuote(symbol: string): Promise<MarketDataResult<StockQuote>> {
-  // Check cache first
-  const cached = quoteCache.get(symbol);
-  if (isCacheValid(cached, CACHE_TTL.quote)) {
-    return {
-      data: cached!.data,
-      source: cached!.source,
-      cached: true,
-      timestamp: cached!.timestamp,
-    };
+  // Check module cache
+  if (QUOTE_CACHE && isCacheFresh()) {
+    const cached = QUOTE_CACHE.quotes.get(symbol);
+    if (cached) {
+      return {
+        data: cached,
+        source: QUOTE_CACHE.source,
+        cached: true,
+        timestamp: QUOTE_CACHE.timestamp,
+      };
+    }
   }
 
-  const { source, apiKey } = getPreferredSource();
+  const polygonKey = getPolygonKey();
   const now = Date.now();
 
   // Try Polygon
-  if (source === 'polygon' && apiKey) {
+  if (polygonKey) {
     try {
-      const quote = await polygon.getQuote(symbol, apiKey);
-      quoteCache.set(symbol, { data: quote, source: 'polygon', timestamp: now });
+      const quote = await polygon.getQuote(symbol, polygonKey);
       return { data: quote, source: 'polygon', cached: false, timestamp: now };
     } catch (error) {
-      console.warn('Polygon quote failed, trying Alpha Vantage:', error);
+      console.warn('[MarketData] Polygon single quote failed:', error);
     }
   }
 
-  // Try Alpha Vantage
-  const { getApiKey } = useApiKeysStore.getState();
-  const alphaKey = getApiKey('alphavantage');
-
-  if (alphaKey) {
-    try {
-      const quote = await alphavantage.getQuote(symbol, alphaKey);
-      quoteCache.set(symbol, { data: quote, source: 'alphavantage', timestamp: now });
-      return { data: quote, source: 'alphavantage', cached: false, timestamp: now };
-    } catch (error) {
-      console.warn('Alpha Vantage quote failed, using mock:', error);
-    }
-  }
-
-  // Fallback to mock
+  // Mock fallback
   const mockQuote = polygon.getMockQuote(symbol);
   return { data: mockQuote, source: 'mock', cached: false, timestamp: now };
 }
@@ -210,7 +221,7 @@ export async function getQuote(symbol: string): Promise<MarketDataResult<StockQu
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Get historical daily data with automatic source selection
+ * Get historical daily data
  */
 export async function getDailyData(
   symbol: string,
@@ -218,48 +229,34 @@ export async function getDailyData(
 ): Promise<MarketDataResult<HistoricalDataPoint[]>> {
   const cacheKey = `${symbol}-${days}`;
 
-  // Check cache first
+  // Check cache
   const cached = dailyCache.get(cacheKey);
-  if (isCacheValid(cached, CACHE_TTL.daily)) {
+  if (cached && Date.now() - cached.timestamp < DAILY_CACHE_TTL) {
     return {
-      data: cached!.data,
-      source: cached!.source,
+      data: cached.data,
+      source: cached.source,
       cached: true,
-      timestamp: cached!.timestamp,
+      timestamp: cached.timestamp,
     };
   }
 
-  const { source, apiKey } = getPreferredSource();
+  const polygonKey = getPolygonKey();
   const now = Date.now();
 
   // Try Polygon
-  if (source === 'polygon' && apiKey) {
+  if (polygonKey) {
     try {
-      const data = await polygon.getDailyData(symbol, apiKey, days);
+      const data = await polygon.getDailyData(symbol, polygonKey, days);
       dailyCache.set(cacheKey, { data, source: 'polygon', timestamp: now });
       return { data, source: 'polygon', cached: false, timestamp: now };
     } catch (error) {
-      console.warn('Polygon daily data failed, trying Alpha Vantage:', error);
+      console.warn('[MarketData] Polygon daily data failed:', error);
     }
   }
 
-  // Try Alpha Vantage
-  const { getApiKey } = useApiKeysStore.getState();
-  const alphaKey = getApiKey('alphavantage');
-
-  if (alphaKey) {
-    try {
-      const outputSize = days > 100 ? 'full' : 'compact';
-      const data = await alphavantage.getDailyData(symbol, alphaKey, outputSize);
-      dailyCache.set(cacheKey, { data, source: 'alphavantage', timestamp: now });
-      return { data, source: 'alphavantage', cached: false, timestamp: now };
-    } catch (error) {
-      console.warn('Alpha Vantage daily data failed, using mock:', error);
-    }
-  }
-
-  // Fallback to mock
+  // Mock fallback
   const mockData = polygon.getMockDailyData(symbol, days);
+  dailyCache.set(cacheKey, { data: mockData, source: 'mock', timestamp: now });
   return { data: mockData, source: 'mock', cached: false, timestamp: now };
 }
 
@@ -274,17 +271,13 @@ export async function getOptionsChain(
   symbol: string,
   expirationDate?: string
 ): Promise<polygon.PolygonOption[] | null> {
-  const { getApiKey } = useApiKeysStore.getState();
-  const polygonKey = getApiKey('polygon');
-
-  if (!polygonKey) {
-    return null;
-  }
+  const polygonKey = getPolygonKey();
+  if (!polygonKey) return null;
 
   try {
     return await polygon.getOptionsChain(symbol, polygonKey, expirationDate);
   } catch (error) {
-    console.error('Options chain error:', error);
+    console.error('[MarketData] Options chain error:', error);
     return null;
   }
 }
@@ -296,10 +289,7 @@ export async function getOptionsMetrics(
   symbol: string
 ): Promise<polygon.OptionsMetrics | null> {
   const options = await getOptionsChain(symbol);
-  if (!options || options.length === 0) {
-    return null;
-  }
-
+  if (!options || options.length === 0) return null;
   return polygon.calculateOptionsMetrics(options);
 }
 
@@ -307,16 +297,13 @@ export async function getOptionsMetrics(
 // UTILITIES
 // ═══════════════════════════════════════════════════════════════════════════
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
- * Clear all caches (useful when API keys change)
+ * Clear all caches
  */
 export function clearCache(): void {
-  quoteCache.clear();
+  QUOTE_CACHE = null;
   dailyCache.clear();
+  console.log('[MarketData] Cache cleared');
 }
 
 /**
@@ -326,7 +313,8 @@ export function getDataSourceInfo(): {
   source: DataSource;
   capabilities: string[];
 } {
-  const { source } = getPreferredSource();
+  const polygonKey = getPolygonKey();
+  const source: DataSource = polygonKey ? 'polygon' : 'mock';
 
   const capabilities: Record<DataSource, string[]> = {
     polygon: [
@@ -335,29 +323,21 @@ export function getDataSourceInfo(): {
       'Options chain with Greeks',
       'No rate limiting',
     ],
-    alphavantage: [
-      'Delayed quotes (15-20 min)',
-      'Historical data',
-      'Rate limited (5 calls/min)',
-    ],
     mock: [
       'Demo data only',
       'No real market data',
     ],
   };
 
-  return {
-    source,
-    capabilities: capabilities[source],
-  };
+  return { source, capabilities: capabilities[source] };
 }
 
 /**
- * Get current data provider - POLYGON FIRST!
+ * Get current data provider
  */
 export function getCurrentProvider(): DataSource {
-  const { source } = getPreferredSource();
-  return source;
+  const polygonKey = getPolygonKey();
+  return polygonKey ? 'polygon' : 'mock';
 }
 
 /**
@@ -368,8 +348,6 @@ export function getProviderLabel(): string {
   switch (provider) {
     case 'polygon':
       return 'Real-time via Polygon.io';
-    case 'alphavantage':
-      return 'Delayed quotes via Alpha Vantage';
     default:
       return 'Demo mode (no API key)';
   }
@@ -381,7 +359,7 @@ export function getProviderLabel(): string {
 export function getProviderInfo(): {
   source: DataSource;
   label: string;
-  color: 'emerald' | 'amber' | 'slate';
+  color: 'emerald' | 'slate';
 } {
   const source = getCurrentProvider();
 
@@ -392,16 +370,10 @@ export function getProviderInfo(): {
         label: 'Real-time via Polygon.io',
         color: 'emerald',
       };
-    case 'alphavantage':
-      return {
-        source,
-        label: 'Delayed quotes via Alpha Vantage (rate limited)',
-        color: 'amber',
-      };
     default:
       return {
         source,
-        label: 'Demo mode - Add API key in Settings',
+        label: 'Demo mode - Add Polygon key in Settings',
         color: 'slate',
       };
   }
@@ -415,14 +387,25 @@ export function isRealtime(): boolean {
 }
 
 export default {
+  // Main functions
+  getQuotes,
+  fetchQuotes,
+  refreshInBackground,
+  getCachedQuotes,
+  isCacheFresh,
+  getDataSource,
+  // Legacy
   getBulkQuotes,
   getQuote,
   getDailyData,
+  // Options
   getOptionsChain,
   getOptionsMetrics,
+  // Utils
   clearCache,
   getDataSourceInfo,
   getCurrentProvider,
   getProviderLabel,
+  getProviderInfo,
   isRealtime,
 };
