@@ -24,6 +24,9 @@ import {
   ChevronRight,
   Clock,
   Loader2,
+  Plus,
+  Trash2,
+  Save,
 } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
@@ -78,36 +81,56 @@ interface SavedDream {
   data: BacktestResult | ForecastResult | PortfolioProjection[];
 }
 
+// Exit Strategy types
+interface SellPoint {
+  id: string;
+  price: number;
+  percent: number; // % of holdings to sell
+}
+
+interface ExitPlan {
+  id: string;
+  symbol: string;
+  shares: number;
+  costBasis: number;
+  sellPoints: SellPoint[];
+  taxRate: number;
+  timestamp: string;
+}
+
+// Exit plans storage key
+const EXIT_PLANS_STORAGE_KEY = 'spectrascope-exit-plans';
+
 // Status messages for each mode
 const STATUS_MESSAGES = {
   backtest: [
-    'DRIFTING INTO THE CLOUDS...',
-    'CONSULTING THE CRYSTAL BALL...',
-    'TRAVELING THROUGH TIME...',
-    'ASKING THE MOON...',
+    'DRIFTING INTO THE CLOUDS... ☁️',
+    'CONSULTING THE CRYSTAL BALL 🔮...',
+    'TRAVELING THROUGH TIME... ⏪',
+    'ASKING THE MOON... 🌙',
   ],
   forecast: [
-    'CONSULTING THE CRYSTAL BALL...',
-    'ASKING THE MOON...',
-    'READING THE STARS...',
-    'CHANNELING THE ORACLE...',
+    'CONSULTING THE CRYSTAL BALL 🔮...',
+    'ASKING THE MOON... 🌙',
+    'READING THE STARS... ✨',
+    'CHANNELING THE ORACLE... 🔮',
   ],
   moon: [
-    'STRAPPING INTO THE ROCKET...',
-    'DESTINATION: MOON',
-    'CALCULATING TENDIES...',
-    'WHEN LAMBO? SOON...',
-    'DIAMOND HANDS ACTIVATED...',
-    'CHECKING SQUEEZE STATUS...',
-    'TO THE MOON!',
+    'STRAPPING INTO THE ROCKET... 🚀',
+    'DESTINATION: MOON 🌙',
+    'CALCULATING TENDIES... 🍗',
+    'WHEN LAMBO? SOON™ 🏎️',
+    'DIAMOND HANDS ACTIVATED 💎🙌',
+    'CHECKING SQUEEZE STATUS... 📈',
+    'TO THE MOON! 🚀🚀🚀',
   ],
   doom: [
-    'ENTERING THE VOID...',
-    'CONSULTING THE BEARS...',
-    'CALCULATING MAXIMUM PAIN...',
-    'PAPER HANDS DETECTED...',
-    'F IN CHAT...',
-    'HEDGING THE APOCALYPSE...',
+    'ENTERING THE VOID... 🕳️',
+    'CONSULTING THE BEARS 🐻...',
+    'CALCULATING MAXIMUM PAIN... 💀',
+    'PAPER HANDS DETECTED 📄🙌...',
+    'F IN CHAT... 😢',
+    'HEDGING THE APOCALYPSE... ☠️',
   ],
 };
 
@@ -137,6 +160,14 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
   const [forecastShares, setForecastShares] = useState('');
   const [forecastResult, setForecastResult] = useState<ForecastResult | null>(null);
 
+  // Exit Strategy state
+  const [showExitPlanner, setShowExitPlanner] = useState(false);
+  const [sellPoints, setSellPoints] = useState<SellPoint[]>([]);
+  const [taxRate, setTaxRate] = useState(25);
+  const [newSellPrice, setNewSellPrice] = useState('');
+  const [newSellPercent, setNewSellPercent] = useState('');
+  const [savedExitPlans, setSavedExitPlans] = useState<ExitPlan[]>([]);
+
   // Portfolio projection state
   const [moonProjections, setMoonProjections] = useState<PortfolioProjection[]>([]);
   const [doomProjections, setDoomProjections] = useState<PortfolioProjection[]>([]);
@@ -156,12 +187,142 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
     }
   }, []);
 
+  // Load saved exit plans from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(EXIT_PLANS_STORAGE_KEY);
+      if (saved) {
+        setSavedExitPlans(JSON.parse(saved));
+      }
+    } catch {
+      console.warn('Failed to load saved exit plans');
+    }
+  }, []);
+
   // Save dream to localStorage
   const saveDream = useCallback((dream: SavedDream) => {
     const newDreams = [dream, ...savedDreams].slice(0, 20); // Keep last 20
     setSavedDreams(newDreams);
     localStorage.setItem(DREAMS_STORAGE_KEY, JSON.stringify(newDreams));
   }, [savedDreams]);
+
+  // Exit Strategy helpers
+  const addSellPoint = useCallback(() => {
+    if (!newSellPrice || !newSellPercent) return;
+
+    const totalPercent = sellPoints.reduce((sum, p) => sum + p.percent, 0);
+    const newPercent = parseFloat(newSellPercent);
+
+    if (totalPercent + newPercent > 100) {
+      return; // Can't exceed 100%
+    }
+
+    const newPoint: SellPoint = {
+      id: `sp-${Date.now()}`,
+      price: parseFloat(newSellPrice),
+      percent: newPercent,
+    };
+
+    setSellPoints([...sellPoints, newPoint].sort((a, b) => a.price - b.price));
+    setNewSellPrice('');
+    setNewSellPercent('');
+  }, [newSellPrice, newSellPercent, sellPoints]);
+
+  const removeSellPoint = useCallback((id: string) => {
+    setSellPoints(sellPoints.filter((p) => p.id !== id));
+  }, [sellPoints]);
+
+  const sellRemainingPercent = useCallback(() => {
+    const totalPercent = sellPoints.reduce((sum, p) => sum + p.percent, 0);
+    const remaining = 100 - totalPercent;
+    if (remaining <= 0 || !forecastResult) return;
+
+    const newPoint: SellPoint = {
+      id: `sp-${Date.now()}`,
+      price: forecastResult.targetPrice,
+      percent: remaining,
+    };
+
+    setSellPoints([...sellPoints, newPoint].sort((a, b) => a.price - b.price));
+  }, [sellPoints, forecastResult]);
+
+  const calculateExitResults = useCallback(() => {
+    if (!forecastResult || sellPoints.length === 0) return null;
+
+    const shares = forecastResult.currentShares;
+    const costBasis = forecastResult.currentValue;
+
+    let grossProceeds = 0;
+
+    sellPoints.forEach((point) => {
+      const sharesToSell = shares * (point.percent / 100);
+      grossProceeds += sharesToSell * point.price;
+    });
+
+    const totalSoldPercent = sellPoints.reduce((sum, p) => sum + p.percent, 0);
+    const grossProfit = grossProceeds - (costBasis * totalSoldPercent / 100);
+    const taxes = grossProfit > 0 ? grossProfit * (taxRate / 100) : 0;
+    const netProfit = grossProfit - taxes;
+
+    // Calculate average sell price
+    let weightedPriceSum = 0;
+    sellPoints.forEach((point) => {
+      weightedPriceSum += point.price * point.percent;
+    });
+    const avgSellPrice = totalSoldPercent > 0 ? weightedPriceSum / totalSoldPercent : 0;
+
+    // vs selling all now
+    const sellAllNow = shares * forecastResult.currentPrice;
+    const vsNow = grossProceeds - sellAllNow;
+
+    // vs selling all at target
+    const sellAllTarget = shares * forecastResult.targetPrice;
+    const vsTarget = grossProceeds - sellAllTarget;
+
+    return {
+      grossProceeds,
+      costBasis: costBasis * totalSoldPercent / 100,
+      grossProfit,
+      taxes,
+      netProfit,
+      netProfitPercent: costBasis > 0 ? (netProfit / (costBasis * totalSoldPercent / 100)) * 100 : 0,
+      avgSellPrice,
+      vsNow,
+      vsTarget,
+      totalSoldPercent,
+    };
+  }, [forecastResult, sellPoints, taxRate]);
+
+  const saveExitPlan = useCallback(() => {
+    if (!forecastResult || sellPoints.length === 0) return;
+
+    const plan: ExitPlan = {
+      id: `exit-${Date.now()}`,
+      symbol: forecastResult.symbol,
+      shares: forecastResult.currentShares,
+      costBasis: forecastResult.currentValue,
+      sellPoints: [...sellPoints],
+      taxRate,
+      timestamp: new Date().toISOString(),
+    };
+
+    const newPlans = [plan, ...savedExitPlans].slice(0, 20);
+    setSavedExitPlans(newPlans);
+    localStorage.setItem(EXIT_PLANS_STORAGE_KEY, JSON.stringify(newPlans));
+
+    // Also save as a dream
+    const results = calculateExitResults();
+    if (results) {
+      saveDream({
+        id: `exit-dream-${Date.now()}`,
+        type: 'forecast',
+        timestamp: new Date().toISOString(),
+        title: `${forecastResult.symbol} Exit Plan`,
+        summary: `${sellPoints.length} sell points - Net +${results.netProfitPercent.toFixed(1)}% after tax`,
+        data: forecastResult,
+      });
+    }
+  }, [forecastResult, sellPoints, taxRate, savedExitPlans, calculateExitResults, saveDream]);
 
   // Animate status messages
   useEffect(() => {
@@ -834,6 +995,195 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
                   </span>
                 </div>
               </div>
+
+              {/* Exit Strategy Builder Toggle */}
+              <button
+                onClick={() => setShowExitPlanner(!showExitPlanner)}
+                className="w-full mt-4 py-2 px-4 rounded-xl bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500/30 transition-all flex items-center justify-center gap-2"
+              >
+                <Target className="w-4 h-4" />
+                {showExitPlanner ? 'Hide Exit Planner' : 'Plan Exit Strategy'}
+              </button>
+            </div>
+          )}
+
+          {/* Exit Strategy Builder */}
+          {showExitPlanner && forecastResult.currentShares > 0 && (
+            <div className="glass-card p-5 border-purple-500/30 animate-fade-in">
+              <h4 className="text-white font-semibold mb-4 flex items-center gap-2">
+                🎯 Exit Strategy Builder
+              </h4>
+
+              <div className="text-slate-400 text-sm mb-4">
+                {forecastResult.symbol} • {forecastResult.currentShares} shares @ {formatCurrency(forecastResult.currentPrice)} = {formatCurrency(forecastResult.currentValue)}
+              </div>
+
+              {/* Current Sell Points */}
+              {sellPoints.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {sellPoints.map((point, index) => {
+                    const sharesToSell = forecastResult.currentShares * (point.percent / 100);
+                    return (
+                      <div
+                        key={point.id}
+                        className="flex items-center justify-between bg-slate-800/50 rounded-lg p-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-500 text-sm">#{index + 1}</span>
+                          <div>
+                            <span className="text-emerald-400 font-medium">${point.price.toFixed(0)}</span>
+                            <span className="text-slate-400 text-sm ml-2">{point.percent}%</span>
+                            <span className="text-slate-500 text-xs ml-2">({sharesToSell.toFixed(2)} shares)</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeSellPoint(point.id)}
+                          className="text-rose-400 hover:text-rose-300 p-1"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center justify-between text-sm pt-2 border-t border-slate-700">
+                    <span className="text-slate-400">Total:</span>
+                    <span className={`font-semibold ${sellPoints.reduce((s, p) => s + p.percent, 0) === 100 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {sellPoints.reduce((s, p) => s + p.percent, 0)}% {sellPoints.reduce((s, p) => s + p.percent, 0) === 100 && '✓'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Add Sell Point */}
+              {sellPoints.reduce((s, p) => s + p.percent, 0) < 100 && (
+                <div className="flex gap-2 mb-4">
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      value={newSellPrice}
+                      onChange={(e) => setNewSellPrice(e.target.value)}
+                      placeholder="Price $"
+                      className="input-field text-sm py-2"
+                    />
+                  </div>
+                  <div className="w-24">
+                    <input
+                      type="number"
+                      value={newSellPercent}
+                      onChange={(e) => setNewSellPercent(e.target.value)}
+                      placeholder="%"
+                      max={100 - sellPoints.reduce((s, p) => s + p.percent, 0)}
+                      className="input-field text-sm py-2"
+                    />
+                  </div>
+                  <button
+                    onClick={addSellPoint}
+                    disabled={!newSellPrice || !newSellPercent}
+                    className="px-3 py-2 rounded-xl bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 disabled:opacity-50"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Quick Actions */}
+              <div className="flex gap-2 mb-4">
+                {sellPoints.reduce((s, p) => s + p.percent, 0) < 100 && (
+                  <button
+                    onClick={sellRemainingPercent}
+                    className="flex-1 py-2 text-sm rounded-xl bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
+                  >
+                    Sell Rest ({100 - sellPoints.reduce((s, p) => s + p.percent, 0)}%) @ Target
+                  </button>
+                )}
+              </div>
+
+              {/* Tax Calculator */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-400 text-sm">💰 Capital Gains Tax:</span>
+                  <span className="text-white font-medium">{taxRate}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={taxRate}
+                  onChange={(e) => setTaxRate(parseInt(e.target.value))}
+                  className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                />
+                <div className="flex justify-between text-xs text-slate-500 mt-1">
+                  <span>0%</span>
+                  <span>25%</span>
+                  <span>50%</span>
+                </div>
+              </div>
+
+              {/* Projected Results */}
+              {sellPoints.length > 0 && (() => {
+                const results = calculateExitResults();
+                if (!results) return null;
+                return (
+                  <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+                    <h5 className="text-purple-400 font-semibold mb-3">📊 PROJECTED RESULTS</h5>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Gross Proceeds:</span>
+                        <span className="text-white">{formatCurrency(results.grossProceeds)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Cost Basis:</span>
+                        <span className="text-white">{formatCurrency(results.costBasis)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Gross Profit:</span>
+                        <span className="text-emerald-400">{formatCurrency(results.grossProfit)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Taxes ({taxRate}%):</span>
+                        <span className="text-rose-400">-{formatCurrency(results.taxes)}</span>
+                      </div>
+                      <div className="border-t border-purple-500/30 pt-2 mt-2">
+                        <div className="flex justify-between">
+                          <span className="text-white font-semibold">NET PROFIT:</span>
+                          <span className="text-emerald-400 font-bold">
+                            {formatCurrency(results.netProfit)} (+{results.netProfitPercent.toFixed(1)}%)
+                          </span>
+                        </div>
+                      </div>
+                      <div className="pt-2 space-y-1 text-xs">
+                        <div className="flex justify-between text-slate-500">
+                          <span>Avg Sell Price:</span>
+                          <span>{formatCurrency(results.avgSellPrice)}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-500">
+                          <span>vs Selling All Now:</span>
+                          <span className={results.vsNow >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                            {results.vsNow >= 0 ? '+' : ''}{formatCurrency(results.vsNow)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-slate-500">
+                          <span>vs Selling All @Target:</span>
+                          <span className={results.vsTarget >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                            {results.vsTarget >= 0 ? '+' : ''}{formatCurrency(results.vsTarget)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Save Button */}
+              {sellPoints.length > 0 && (
+                <button
+                  onClick={saveExitPlan}
+                  className="w-full mt-4 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-violet-500 text-white font-semibold flex items-center justify-center gap-2"
+                >
+                  <Save className="w-5 h-5" />
+                  Save Exit Plan
+                </button>
+              )}
             </div>
           )}
 
@@ -843,6 +1193,8 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
               setForecastSymbol('');
               setTargetPrice('');
               setForecastShares('');
+              setSellPoints([]);
+              setShowExitPlanner(false);
             }}
             className="w-full py-3 text-purple-400 hover:text-purple-300 transition-colors"
           >
