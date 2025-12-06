@@ -213,6 +213,8 @@ export interface WatchlistItem extends Stock {
   scopedFrom?: string; // Sector ID (e.g., 'biotech', 'meme')
   scopedAt?: string; // ISO timestamp when scoped
   scopedPrice?: number; // Price when added from scope
+  scopedSentiment?: 'bullish' | 'bearish' | 'neutral'; // Sentiment at scope time
+  scopedSource?: 'grok' | 'full-ai'; // Which scan found it
 }
 
 export interface PriceAlert {

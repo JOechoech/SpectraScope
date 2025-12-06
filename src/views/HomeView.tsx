@@ -70,6 +70,27 @@ const COMPANY_NAMES: Record<string, string> = {
   NFLX: 'Netflix',
 };
 
+// Sector emoji mapping
+const SECTOR_EMOJIS: Record<string, string> = {
+  tech: '💻',
+  biotech: '🧬',
+  finance: '🏦',
+  energy: '⚡',
+  healthcare: '🏥',
+  retail: '🛒',
+  gaming: '🎮',
+  meme: '🚀',
+};
+
+// Format date as DD.MM.YYYY
+function formatScopedDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
 /**
  * Format price with appropriate decimal places
  * - Under $1: 3 decimals ($0.823)
@@ -319,12 +340,12 @@ export const HomeView = memo(function HomeView({
     return `${Math.floor(seconds / 60)}m ago`;
   };
 
-  // Get glow class based on signal
-  const getGlowClass = (signalScore?: AggregateScore) => {
-    if (!signalScore) return '';
-    if (signalScore.percentage >= 60) return 'glow-bullish';
-    if (signalScore.percentage <= 40) return 'glow-bearish';
-    return '';
+  // Calculate performance since scope
+  const getScopePerformance = (scopedPrice: number, currentPrice: number) => {
+    if (!scopedPrice || scopedPrice === 0) return null;
+    const change = currentPrice - scopedPrice;
+    const percentChange = ((change / scopedPrice) * 100);
+    return { change, percentChange };
   };
 
   return (
@@ -498,81 +519,110 @@ export const HomeView = memo(function HomeView({
               const isUp = (quote?.change ?? 0) >= 0;
               const holding = holdings[stock.symbol];
               const isUserAdded = !defaultWatchlistSymbols.has(stock.symbol);
-              const glowClass = getGlowClass(data?.signalScore);
+
+              // Get scoped info from watchlist store
+              const watchlistItem = watchlistItems.find(item => item.symbol === stock.symbol);
+              const scopedInfo = watchlistItem?.scopedFrom ? {
+                from: watchlistItem.scopedFrom,
+                at: watchlistItem.scopedAt,
+                price: watchlistItem.scopedPrice,
+                sentiment: watchlistItem.scopedSentiment,
+                source: watchlistItem.scopedSource,
+              } : null;
+
+              const scopePerf = scopedInfo?.price && quote?.price
+                ? getScopePerformance(scopedInfo.price, quote.price)
+                : null;
 
               return (
                 <div
                   key={stock.symbol}
-                  className={`flex items-center px-3 py-2 bg-slate-800/30 border border-slate-700/50 rounded-xl ${glowClass}`}
+                  className="flex flex-col px-3 py-2 bg-slate-800/30 border border-slate-700/50 rounded-xl"
                 >
-                  {/* Remove Button - works for all stocks in edit mode */}
-                  {isEditMode && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isUserAdded) {
-                          removeStock(stock.symbol);
-                        } else {
-                          hideDefaultStock(stock.symbol);
-                        }
-                      }}
-                      className="mr-2 w-5 h-5 rounded-full bg-rose-500 flex items-center justify-center flex-shrink-0"
-                    >
-                      <Minus className="w-3 h-3 text-white" />
-                    </button>
-                  )}
+                  <div className="flex items-center">
+                    {/* Remove Button - works for all stocks in edit mode */}
+                    {isEditMode && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isUserAdded) {
+                            removeStock(stock.symbol);
+                          } else {
+                            hideDefaultStock(stock.symbol);
+                          }
+                        }}
+                        className="mr-2 w-5 h-5 rounded-full bg-rose-500 flex items-center justify-center flex-shrink-0"
+                      >
+                        <Minus className="w-3 h-3 text-white" />
+                      </button>
+                    )}
 
-                  <div
-                    className="flex-1 flex justify-between items-center cursor-pointer"
-                    onClick={() => onSelectStock(stock.symbol)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-white font-medium text-sm">{stock.symbol}</span>
-                          {holding?.shares > 0 && (
-                            <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">
-                              {holding.shares}
-                            </span>
-                          )}
-                          {/* Signal Badge */}
-                          {data?.signalScore && (
-                            <span
-                              className={`text-[10px] px-1.5 py-0.5 rounded ${
-                                data.signalScore.sentiment === 'bullish'
-                                  ? 'bg-emerald-500/20 text-emerald-400'
-                                  : data.signalScore.sentiment === 'bearish'
-                                  ? 'bg-rose-500/20 text-rose-400'
-                                  : 'bg-amber-500/20 text-amber-400'
-                              }`}
-                            >
-                              {data.signalScore.label}
-                            </span>
-                          )}
+                    <div
+                      className="flex-1 flex justify-between items-center cursor-pointer"
+                      onClick={() => onSelectStock(stock.symbol)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-white font-medium text-sm">{stock.symbol}</span>
+                            {holding?.shares > 0 && (
+                              <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">
+                                {holding.shares}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-slate-400 text-xs">{stock.name}</span>
                         </div>
-                        <span className="text-slate-400 text-xs">{stock.name}</span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        {/* Sparkline */}
+                        {data?.sparkline && data.sparkline.length > 1 && (
+                          <MiniSparkline data={data.sparkline} width={48} height={20} isUp={isUp} />
+                        )}
+
+                        {/* Price & Change */}
+                        {quote ? (
+                          <div className="text-right min-w-[70px]">
+                            <span className="text-white text-sm block">${formatPrice(quote.price)}</span>
+                            <span className={`text-[10px] ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {isUp ? '+' : ''}{quote.changePercent.toFixed(2)}%
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-500 text-sm">--</span>
+                        )}
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-3">
-                      {/* Sparkline */}
-                      {data?.sparkline && data.sparkline.length > 1 && (
-                        <MiniSparkline data={data.sparkline} width={48} height={20} isUp={isUp} />
-                      )}
-
-                      {/* Price & Change */}
-                      {quote ? (
-                        <div className="text-right min-w-[70px]">
-                          <span className="text-white text-sm block">${formatPrice(quote.price)}</span>
-                          <span className={`text-[10px] ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {isUp ? '+' : ''}{quote.changePercent.toFixed(2)}%
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-500 text-sm">--</span>
-                      )}
-                    </div>
                   </div>
+
+                  {/* Scoped Tag - Show if stock was added via Scope */}
+                  {scopedInfo && (
+                    <div
+                      className="mt-1.5 pt-1.5 border-t border-slate-700/30 cursor-pointer"
+                      onClick={() => onSelectStock(stock.symbol)}
+                    >
+                      <div className="flex items-center justify-between text-[10px]">
+                        <div className="flex items-center gap-1.5 text-slate-400">
+                          <span>🏷️</span>
+                          <span>Scoped {scopedInfo.at ? formatScopedDate(scopedInfo.at) : ''}</span>
+                          <span>•</span>
+                          <span className={
+                            scopedInfo.sentiment === 'bullish' ? 'text-emerald-400' :
+                            scopedInfo.sentiment === 'bearish' ? 'text-rose-400' : 'text-slate-400'
+                          }>
+                            {scopedInfo.sentiment ? scopedInfo.sentiment.charAt(0).toUpperCase() + scopedInfo.sentiment.slice(1) : 'Neutral'}
+                          </span>
+                          <span>{SECTOR_EMOJIS[scopedInfo.from] || '📊'}</span>
+                        </div>
+                        {scopePerf && (
+                          <span className={scopePerf.percentChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                            {scopePerf.percentChange >= 0 ? '📈' : '📉'} {scopePerf.percentChange >= 0 ? '+' : ''}{scopePerf.percentChange.toFixed(1)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
