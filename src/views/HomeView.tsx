@@ -18,12 +18,12 @@ import type { StockQuote } from '@/types';
 
 // Market Indices (ETFs that Polygon supports)
 const MARKET_INDICES = [
-  { symbol: 'SPY', name: 'S&P 500', icon: '🇺🇸' },
-  { symbol: 'QQQ', name: 'NASDAQ', icon: '📈' },
-  { symbol: 'DIA', name: 'Dow Jones', icon: '🏛️' },
-  { symbol: 'EWG', name: 'Germany', icon: '🇩🇪' },
-  { symbol: 'GLD', name: 'Gold', icon: '🥇' },
-  { symbol: 'BITO', name: 'Bitcoin', icon: '₿' },
+  { symbol: 'SPY', name: 'S&P 500', icon: '\u{1F1FA}\u{1F1F8}' },  // 🇺🇸
+  { symbol: 'QQQ', name: 'NASDAQ', icon: '\u{1F4C8}' },           // 📈
+  { symbol: 'DIA', name: 'Dow Jones', icon: '\u{1F3DB}\u{FE0F}' }, // 🏛️
+  { symbol: 'EWG', name: 'Germany', icon: '\u{1F1E9}\u{1F1EA}' },  // 🇩🇪
+  { symbol: 'GLD', name: 'Gold', icon: '\u{1F947}' },              // 🥇
+  { symbol: 'BITO', name: 'Bitcoin', icon: '\u{20BF}' },           // ₿
 ];
 
 // Magnificent 7

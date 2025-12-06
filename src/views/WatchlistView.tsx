@@ -22,11 +22,13 @@ import {
   calculateRSI,
   calculateMACD,
   calculateSMA,
+  calculateBollingerBands,
 } from '@/utils/technicals';
 import {
   getRSISignal,
   getMACDSignal,
   getSMASignal,
+  getBollingerSignal,
   calculateAggregateScore,
 } from '@/utils/signals';
 import type { StockQuote } from '@/types';
@@ -144,18 +146,23 @@ export const WatchlistView = memo(function WatchlistView({
           prices = [];
         }
 
-        // Calculate signal score if we have enough data
+        // Calculate signal score if we have enough data (need at least 26 for MACD)
         let signalScore: AggregateScore | undefined;
-        if (prices.length >= 14) {
+        if (prices.length >= 26) {
           try {
             const rsi = calculateRSI(prices);
             const macd = calculateMACD(prices);
-            const sma20 = prices.length >= 20 ? calculateSMA(prices, 20) : prices[0];
+            const sma20 = calculateSMA(prices, 20);
+            const sma50 = prices.length >= 50 ? calculateSMA(prices, 50) : sma20;
+            const bollinger = calculateBollingerBands(prices);
 
+            // All 5 indicators: RSI, MACD, SMA20, SMA50, Bollinger
             const signals = [
               getRSISignal(rsi),
               getMACDSignal(macd.histogram, macd.histogram - macd.signal),
               getSMASignal(quote.price, sma20, 20),
+              getSMASignal(quote.price, sma50, 50),
+              getBollingerSignal(quote.price, bollinger.upper, bollinger.middle, bollinger.lower),
             ];
 
             signalScore = calculateAggregateScore(signals);

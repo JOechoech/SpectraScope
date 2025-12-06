@@ -9,11 +9,12 @@
  * - Delete holdings
  */
 
-import { useState, useMemo, memo } from 'react';
-import { Edit2, Trash2, PieChart, TrendingUp, TrendingDown } from 'lucide-react';
+import { useState, useMemo, memo, useEffect, useCallback } from 'react';
+import { Edit2, Trash2, PieChart, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useQuoteCacheStore } from '@/stores/useQuoteCacheStore';
+import * as marketData from '@/services/marketData';
 
 interface PortfolioViewProps {
   onBack: () => void;
@@ -41,9 +42,45 @@ export const PortfolioView = memo(function PortfolioView({
 }: PortfolioViewProps) {
   const { items: watchlistItems, holdings, setShares } = useWatchlistStore();
   const quotes = useQuoteCacheStore((s) => s.quotes);
+  const setQuotesCache = useQuoteCacheStore((s) => s.setQuotes);
 
   const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
   const [editShares, setEditShares] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Get all holdings symbols (UPPERCASE)
+  const holdingsSymbols = useMemo(() => {
+    return Object.values(holdings)
+      .filter((h) => h.shares > 0)
+      .map((h) => h.symbol.toUpperCase());
+  }, [holdings]);
+
+  // Fetch quotes for all holdings
+  const loadQuotes = useCallback(async () => {
+    if (holdingsSymbols.length === 0) return;
+
+    setIsLoading(true);
+    console.log('[PortfolioView] Fetching quotes for holdings:', holdingsSymbols);
+
+    try {
+      const result = await marketData.getBulkQuotes(holdingsSymbols);
+      console.log('[PortfolioView] Quotes received:', Object.fromEntries(result.quotes));
+
+      // Update global cache
+      if (result.source !== 'unavailable') {
+        setQuotesCache(result.quotes, result.source);
+      }
+    } catch (error) {
+      console.error('[PortfolioView] Failed to load quotes:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [holdingsSymbols, setQuotesCache]);
+
+  // Load quotes on mount and when holdings change
+  useEffect(() => {
+    loadQuotes();
+  }, [loadQuotes]);
 
   // Calculate portfolio metrics - READ DIRECTLY FROM HOLDINGS!
   const portfolio = useMemo(() => {
@@ -168,6 +205,15 @@ export const PortfolioView = memo(function PortfolioView({
         subtitle={`${portfolio.positions.length} holdings`}
         showBack
         onBack={onBack}
+        rightContent={
+          <button
+            onClick={loadQuotes}
+            disabled={isLoading}
+            className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/50 transition-colors"
+          >
+            <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+        }
       />
 
       {/* Portfolio Summary */}
