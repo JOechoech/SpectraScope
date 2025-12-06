@@ -140,6 +140,9 @@
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
     scroll-behavior: smooth;
+    /* Background color is set dynamically via JS for status bar theming */
+    /* Default to black, will be overridden by updateThemeColor() */
+    background-color: #000000;
   }
 
   body {
