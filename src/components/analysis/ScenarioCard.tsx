@@ -49,6 +49,19 @@ export const ScenarioCard = memo(function ScenarioCard({
   const config = scenarioConfig[type];
   const Icon = config.icon;
 
+  // Handle null/undefined scenario
+  if (!scenario) {
+    return (
+      <div className={`${config.bgColor} border ${config.borderColor} rounded-2xl p-4`}>
+        <div className="flex items-center gap-2">
+          <Icon className={`w-5 h-5 ${config.textColor}`} />
+          <span className={`font-semibold ${config.textColor}`}>{config.label}</span>
+        </div>
+        <p className="text-slate-400 text-sm mt-2">No data available</p>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`${config.bgColor} border ${config.borderColor} rounded-2xl p-4`}
@@ -63,21 +76,21 @@ export const ScenarioCard = memo(function ScenarioCard({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-2xl font-bold text-white">
-            {scenario.probability}%
+            {scenario.probability ?? 0}%
           </span>
         </div>
       </div>
 
       {/* Title */}
-      <h4 className="text-white font-medium mb-2">{scenario.title}</h4>
+      <h4 className="text-white font-medium mb-2">{scenario.title || 'Untitled'}</h4>
 
       {/* Price Target */}
       <div className={`${config.accentColor} text-sm mb-3`}>
-        Target: {scenario.priceTarget} ({scenario.timeframe})
+        Target: {scenario.priceTarget || 'N/A'} ({scenario.timeframe || 'Unknown'})
       </div>
 
       {/* Summary */}
-      <p className="text-slate-300 text-sm mb-4">{scenario.summary}</p>
+      <p className="text-slate-300 text-sm mb-4">{scenario.summary || 'No summary available.'}</p>
 
       {/* Catalysts */}
       {scenario.catalysts && scenario.catalysts.length > 0 && (

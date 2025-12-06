@@ -83,11 +83,22 @@ function generateId(): string {
 }
 
 function getDominantScenario(result: AnalysisResult): 'bull' | 'bear' | 'base' {
-  const { bull, bear, base } = result;
-  if (bull.probability >= bear.probability && bull.probability >= base.probability) {
+  // Handle null/undefined result or scenarios
+  if (!result) return 'base';
+
+  const bull = result.bull;
+  const bear = result.bear;
+  const base = result.base;
+
+  // Handle missing scenarios
+  const bullProb = bull?.probability ?? 0;
+  const bearProb = bear?.probability ?? 0;
+  const baseProb = base?.probability ?? 0;
+
+  if (bullProb >= bearProb && bullProb >= baseProb) {
     return 'bull';
   }
-  if (bear.probability >= bull.probability && bear.probability >= base.probability) {
+  if (bearProb >= bullProb && bearProb >= baseProb) {
     return 'bear';
   }
   return 'base';

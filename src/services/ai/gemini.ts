@@ -36,7 +36,7 @@ export async function getGeminiResearch(
 
   try {
     const response = await fetch(
-      `${BASE_URL}/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `${BASE_URL}/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: {
