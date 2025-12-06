@@ -9,7 +9,7 @@
  */
 
 import { useState, memo, useCallback } from 'react';
-import { Telescope, Plus, Check, Sparkles, Zap, Loader2, ListPlus, Search } from 'lucide-react';
+import { Telescope, Plus, Check, Sparkles, Zap, Loader2, ListPlus, Search, Clock } from 'lucide-react';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 
@@ -40,6 +40,16 @@ interface ScanResult {
 }
 
 type ScanMode = 'full' | 'grok' | null;
+
+// Helper to format timestamp in European format
+function formatScanTime(date: Date): string {
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${day}.${month}.${year} at ${hours}:${minutes}`;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SECTOR DATA
@@ -175,6 +185,7 @@ export const ScopeSuggest = memo(function ScopeSuggest({
   const [scanMode, setScanMode] = useState<ScanMode>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
+  const [scanTimestamp, setScanTimestamp] = useState<Date | null>(null);
   const { addStock, items: watchlistItems } = useWatchlistStore();
   const { getApiKey } = useApiKeysStore();
   const [recentlyAdded, setRecentlyAdded] = useState<string[]>([]);
@@ -282,6 +293,7 @@ Only return valid JSON.`,
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
           setScanResults(parsed.results || []);
+          setScanTimestamp(new Date());
         }
       }
     } catch (err) {
@@ -357,6 +369,7 @@ Only return valid JSON.`,
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
           setScanResults(parsed.results || []);
+          setScanTimestamp(new Date());
         }
       }
     } catch (err) {
@@ -452,6 +465,7 @@ Only return valid JSON.`,
               setSelectedSector(selectedSector === sector.id ? null : sector.id);
               setScanResults([]);
               setScanMode(null);
+              setScanTimestamp(null);
             }}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl whitespace-nowrap transition-all ${
               selectedSector === sector.id
@@ -485,16 +499,25 @@ Only return valid JSON.`,
       {scanResults.length > 0 && (
         <div className="mt-3 bg-slate-900/50 border border-slate-800/50 rounded-2xl overflow-hidden">
           <div
-            className="px-4 py-2.5 border-b border-slate-800/50 flex items-center justify-between"
+            className="px-4 py-2.5 border-b border-slate-800/50"
             style={{ background: activeSector ? `${activeSector.color}15` : undefined }}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{activeSector?.icon}</span>
+                <span className="text-white font-medium">{activeSector?.name}</span>
+                <span className="text-slate-500 text-sm">
+                  - Results from {scanMode === 'grok' ? 'Grok' : 'Full AI'}
+                </span>
+              </div>
               <Search size={14} className="text-purple-400" />
-              <span className="text-white font-medium">Scan Results</span>
-              <span className="text-slate-500 text-sm">
-                {scanMode === 'grok' ? 'X/Twitter Sentiment' : 'AI Analysis'}
-              </span>
             </div>
+            {scanTimestamp && (
+              <div className="flex items-center gap-1 mt-1 text-slate-500">
+                <Clock size={12} />
+                <span className="text-xs">Scoped on {formatScanTime(scanTimestamp)}</span>
+              </div>
+            )}
           </div>
 
           {/* Results List */}
@@ -573,63 +596,38 @@ Only return valid JSON.`,
         </div>
       )}
 
-      {/* Sector Stock List (when no scan results) */}
+      {/* Empty State - Sector selected but no scan run yet */}
       {activeSector && scanResults.length === 0 && !isScanning && (
         <div className="mt-3 bg-slate-900/50 border border-slate-800/50 rounded-2xl overflow-hidden">
           {/* Sector Header */}
           <div
-            className="px-4 py-2.5 border-b border-slate-800/50 flex items-center gap-2"
+            className="px-4 py-3 flex items-center gap-2"
             style={{ background: `${activeSector.color}15` }}
           >
-            <span className="text-lg">{activeSector.icon}</span>
-            <span className="text-white font-medium">{activeSector.name}</span>
-            <span className="text-slate-500 text-sm">Select a scan mode above</span>
+            <span className="text-2xl">{activeSector.icon}</span>
+            <span className="text-white font-semibold text-lg">{activeSector.name}</span>
           </div>
 
-          {/* Stock Grid */}
-          <div className="p-3 grid grid-cols-2 gap-2">
-            {activeSector.stocks.map((stock) => {
-              const inWatchlist = isInWatchlist(stock.symbol);
-              const justAdded = recentlyAdded.includes(stock.symbol);
-
-              return (
-                <div
-                  key={stock.symbol}
-                  className="bg-slate-800/50 rounded-xl p-3 flex items-start justify-between group hover:bg-slate-700/50 transition-colors"
-                >
-                  <button
-                    onClick={() => onSelectStock(stock.symbol)}
-                    className="flex-1 text-left"
-                  >
-                    <div className="text-white font-semibold text-sm">
-                      {stock.symbol}
-                    </div>
-                    <div className="text-slate-400 text-xs truncate">
-                      {stock.description}
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleAddToWatchlist(stock);
-                    }}
-                    disabled={inWatchlist || justAdded}
-                    className={`p-1.5 rounded-lg transition-all ${
-                      inWatchlist || justAdded
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : 'bg-slate-700/50 text-slate-400 hover:bg-blue-500/20 hover:text-blue-400'
-                    }`}
-                  >
-                    {inWatchlist || justAdded ? (
-                      <Check size={14} />
-                    ) : (
-                      <Plus size={14} />
-                    )}
-                  </button>
-                </div>
-              );
-            })}
+          {/* Empty State Content */}
+          <div className="p-6 text-center">
+            <Telescope size={40} className="text-slate-600 mx-auto mb-3" />
+            <p className="text-slate-400 font-medium">
+              Select a scan mode above to discover
+            </p>
+            <p className="text-slate-500 text-sm mt-1">
+              trending stocks in this sector
+            </p>
+            <div className="mt-4 flex justify-center gap-3">
+              <div className="flex items-center gap-1.5 text-xs text-purple-400">
+                <Sparkles size={12} />
+                <span>Full AI Scan</span>
+              </div>
+              <span className="text-slate-600">or</span>
+              <div className="flex items-center gap-1.5 text-xs text-amber-400">
+                <Zap size={12} />
+                <span>Grok Social</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
