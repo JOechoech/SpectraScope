@@ -20,6 +20,11 @@ export interface GeminiResearchResult {
   competitivePosition: string;
   risks: string[];
   opportunities: string[];
+  sources: Array<{ title: string; date: string; url?: string }>;
+  groundingMetadata?: {
+    searchQueries: string[];
+    webSources: Array<{ uri: string; title: string }>;
+  };
   timestamp: string;
 }
 
@@ -47,7 +52,9 @@ export async function getGeminiResearch(
             {
               parts: [
                 {
-                  text: `You are a financial research analyst. Analyze ${symbol} (${companyName}), currently trading at $${currentPrice.toFixed(2)}.
+                  text: `You are a financial research analyst with access to LIVE WEB DATA. Analyze ${symbol} (${companyName}), currently trading at $${currentPrice.toFixed(2)}.
+
+IMPORTANT: Use Google Search to find CURRENT, REAL-TIME information. Do NOT rely on training data.
 
 Provide your analysis as JSON only:
 
@@ -57,22 +64,32 @@ Provide your analysis as JSON only:
     "averagePriceTarget": <number or null>,
     "priceTargetRange": { "low": <number>, "high": <number> } or null
   },
-  "keyFindings": ["<finding 1>", "<finding 2>", "<finding 3>"],
-  "recentDevelopments": ["<development 1>", "<development 2>"],
+  "keyFindings": ["<finding 1 with date>", "<finding 2 with date>", "<finding 3 with date>"],
+  "recentDevelopments": ["<development 1 with date>", "<development 2 with date>"],
   "competitivePosition": "<brief assessment>",
   "risks": ["<risk 1>", "<risk 2>"],
-  "opportunities": ["<opportunity 1>", "<opportunity 2>"]
+  "opportunities": ["<opportunity 1>", "<opportunity 2>"],
+  "sources": [
+    { "title": "<article title>", "date": "<YYYY-MM-DD>", "url": "<url if available>" }
+  ]
 }
 
 Focus on:
-- Recent analyst ratings and price targets
-- Key business developments in last 30 days
+- Recent analyst ratings and price targets from the LAST 7 DAYS
+- Key business developments in the LAST 7 DAYS (include dates!)
+- Latest earnings, guidance, or news
 - Competitive positioning
 - Main risks and opportunities
 
-Return ONLY valid JSON, no markdown or explanation.`,
+CRITICAL: Include specific dates for all findings. Return ONLY valid JSON, no markdown.`,
                 },
               ],
+            },
+          ],
+          // Enable Google Search grounding for LIVE web data
+          tools: [
+            {
+              googleSearch: {},
             },
           ],
           generationConfig: {
@@ -106,6 +123,32 @@ Return ONLY valid JSON, no markdown or explanation.`,
 
     const result = JSON.parse(jsonMatch[0]);
 
+    // Extract grounding metadata from response (Google Search sources)
+    const groundingMetadata = data.candidates?.[0]?.groundingMetadata;
+    const webSources: Array<{ uri: string; title: string }> = [];
+
+    if (groundingMetadata?.groundingChunks) {
+      for (const chunk of groundingMetadata.groundingChunks) {
+        if (chunk.web) {
+          webSources.push({
+            uri: chunk.web.uri || '',
+            title: chunk.web.title || 'Source',
+          });
+        }
+      }
+    }
+
+    // Combine AI-provided sources with grounding sources
+    const aiSources = result.sources || [];
+    const allSources = [
+      ...aiSources,
+      ...webSources.map(s => ({
+        title: s.title,
+        date: new Date().toISOString().split('T')[0],
+        url: s.uri,
+      })),
+    ];
+
     return {
       symbol,
       research: result.research,
@@ -114,6 +157,11 @@ Return ONLY valid JSON, no markdown or explanation.`,
       competitivePosition: result.competitivePosition || 'Unknown',
       risks: result.risks || [],
       opportunities: result.opportunities || [],
+      sources: allSources,
+      groundingMetadata: webSources.length > 0 ? {
+        searchQueries: groundingMetadata?.searchEntryPoint?.renderedContent ? ['web search'] : [],
+        webSources,
+      } : undefined,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
@@ -123,8 +171,14 @@ Return ONLY valid JSON, no markdown or explanation.`,
 }
 
 export function formatGeminiForClaude(result: GeminiResearchResult): string {
+  const sourcesText = result.sources && result.sources.length > 0
+    ? `\n**Sources (Live Web Search):**\n${result.sources.slice(0, 5).map(s =>
+        `- ${s.title}${s.date ? ` (${s.date})` : ''}${s.url ? ` - ${s.url}` : ''}`
+      ).join('\n')}`
+    : '';
+
   return `
-## Web Research & Analyst Data (via Gemini)
+## Web Research & Analyst Data (via Gemini with Google Search)
 
 **Analyst Consensus:** ${result.research.analystConsensus.toUpperCase()}
 ${result.research.averagePriceTarget ? `**Average Price Target:** $${result.research.averagePriceTarget}` : ''}
@@ -140,5 +194,6 @@ ${result.recentDevelopments.map((d) => `- ${d}`).join('\n')}
 
 **Opportunities:** ${result.opportunities.join(', ')}
 **Risks:** ${result.risks.join(', ')}
+${sourcesText}
 `;
 }

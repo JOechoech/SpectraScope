@@ -74,6 +74,7 @@ export async function gatherSocialIntelligence(
       trending: grokResult.metrics.trending,
       topTakes: grokResult.topTakes.map((t) => t.text),
       retailVsInstitutional: grokResult.retailVsInstitutional,
+      dateRange: grokResult.dateRange || 'Last 7 days',
       engagementMetrics: {
         likes: grokResult.topTakes.reduce((sum, t) => sum + t.engagement, 0),
         retweets: Math.floor(
@@ -88,6 +89,7 @@ export async function gatherSocialIntelligence(
         text: t.text,
         engagement: t.engagement,
         sentiment: t.sentiment,
+        date: t.date,
       })),
     };
 

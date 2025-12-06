@@ -75,6 +75,11 @@ export interface NewsReportData {
   topSources: string[];
   keyTopics?: string[];     // Key topics from OpenAI analysis
   marketImpact?: string;    // Market impact assessment
+  webSearchSources?: Array<{  // Live web search sources
+    title: string;
+    url: string;
+    date?: string;
+  }>;
 }
 
 export interface NewsReport extends IntelligenceReport {
@@ -94,6 +99,7 @@ export interface SocialReportData {
   trendingRank?: number;
   topTakes: string[]; // Key opinions/takes
   retailVsInstitutional: 'retail-heavy' | 'mixed' | 'institutional';
+  dateRange?: string; // e.g., "2025-12-01 to 2025-12-06"
   engagementMetrics: {
     likes: number;
     retweets: number;
@@ -104,6 +110,7 @@ export interface SocialReportData {
     text: string;
     engagement: number;
     sentiment: 'positive' | 'neutral' | 'negative';
+    date?: string;
   }>;
 }
 
@@ -119,6 +126,7 @@ export interface SocialReport extends IntelligenceReport {
 export interface Citation {
   title: string;
   url: string;
+  date?: string;
   snippet?: string;
 }
 
