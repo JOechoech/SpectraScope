@@ -8,7 +8,7 @@
  * - Doom Mode: All bear cases - Maximum Pain
  */
 
-import { useState, useEffect, useCallback, memo } from 'react';
+import { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import {
   Moon,
   Rewind,
@@ -70,6 +70,7 @@ interface PortfolioProjection {
   targetValue: number;
   change: number;
   changePercent: number;
+  hasAnalysis: boolean; // Whether this projection is based on AI analysis
 }
 
 interface SavedDream {
@@ -159,6 +160,12 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
   const [targetPrice, setTargetPrice] = useState('');
   const [forecastShares, setForecastShares] = useState('');
   const [forecastResult, setForecastResult] = useState<ForecastResult | null>(null);
+  const [forecastCurrentPrice, setForecastCurrentPrice] = useState<number | null>(null);
+  const [targetPercent, setTargetPercent] = useState<number>(10);
+  const [showStockDropdown, setShowStockDropdown] = useState(false);
+
+  // Backtest new state
+  const [showBacktestDropdown, setShowBacktestDropdown] = useState(false);
 
   // Exit Strategy state
   const [showExitPlanner, setShowExitPlanner] = useState(false);
@@ -198,6 +205,57 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
       console.warn('Failed to load saved exit plans');
     }
   }, []);
+
+  // Auto-fill shares and fetch current price when forecast symbol changes
+  useEffect(() => {
+    if (!forecastSymbol) {
+      setForecastCurrentPrice(null);
+      setForecastShares('');
+      return;
+    }
+
+    // Auto-fill shares from portfolio
+    const holding = holdings[forecastSymbol.toUpperCase()];
+    if (holding && holding.shares > 0) {
+      setForecastShares(holding.shares.toString());
+    }
+
+    // Fetch current price
+    const fetchPrice = async () => {
+      try {
+        const quotes = await marketData.getBulkQuotes([forecastSymbol.toUpperCase()]);
+        const quote = quotes.quotes.get(forecastSymbol.toUpperCase());
+        if (quote) {
+          setForecastCurrentPrice(quote.price);
+          // Update target price based on current percent
+          setTargetPrice((quote.price * (1 + targetPercent / 100)).toFixed(2));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch price for', forecastSymbol);
+      }
+    };
+    fetchPrice();
+  }, [forecastSymbol, holdings]);
+
+  // Update target price when percent slider changes
+  useEffect(() => {
+    if (forecastCurrentPrice) {
+      setTargetPrice((forecastCurrentPrice * (1 + targetPercent / 100)).toFixed(2));
+    }
+  }, [targetPercent, forecastCurrentPrice]);
+
+  // Combined list of stocks for dropdown (portfolio + watchlist)
+  const allStocksForDropdown = useMemo(() => {
+    const portfolioStocks = Object.entries(holdings)
+      .filter(([_, h]) => h.shares > 0)
+      .map(([symbol, h]) => ({ symbol, name: watchlistItems.find(w => w.symbol === symbol)?.name || symbol, shares: h.shares, isPortfolio: true }));
+
+    const watchlistOnly = watchlistItems
+      .filter(w => !holdings[w.symbol] || holdings[w.symbol].shares === 0)
+      .map(w => ({ symbol: w.symbol, name: w.name, shares: 0, isPortfolio: false }));
+
+    return { portfolio: portfolioStocks, watchlist: watchlistOnly };
+  }, [holdings, watchlistItems]);
 
   // Save dream to localStorage
   const saveDream = useCallback((dream: SavedDream) => {
@@ -486,6 +544,7 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
         // Get bull case from analyses
         const analysis = getLatestAnalysis(symbol);
         let targetPrice = currentPrice * 1.3; // Default +30% if no analysis
+        let hasAnalysis = false;
 
         if (analysis?.result?.bull) {
           // Parse price target like "+20% to +40%" -> use upper bound
@@ -494,6 +553,7 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
           if (match && match.length > 0) {
             const percent = parseFloat(match[match.length - 1]);
             targetPrice = currentPrice * (1 + percent / 100);
+            hasAnalysis = true;
           }
         }
 
@@ -509,6 +569,7 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
           targetValue,
           change: targetValue - currentValue,
           changePercent: ((targetValue - currentValue) / currentValue) * 100,
+          hasAnalysis,
         });
       }
 
@@ -553,6 +614,7 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
         // Get bear case from analyses
         const analysis = getLatestAnalysis(symbol);
         let targetPrice = currentPrice * 0.7; // Default -30% if no analysis
+        let hasAnalysis = false;
 
         if (analysis?.result?.bear) {
           // Parse price target like "-20% to -40%" -> use lower bound
@@ -561,6 +623,7 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
           if (match && match.length > 0) {
             const percent = parseFloat(match[match.length - 1]);
             targetPrice = currentPrice * (1 + percent / 100);
+            hasAnalysis = true;
           }
         }
 
@@ -576,6 +639,7 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
           targetValue,
           change: targetValue - currentValue,
           changePercent: ((targetValue - currentValue) / currentValue) * 100,
+          hasAnalysis,
         });
       }
 
@@ -733,48 +797,126 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
     </div>
   );
 
+  // Helper to get date X years ago
+  const getDateYearsAgo = (years: number) => {
+    const date = new Date();
+    date.setFullYear(date.getFullYear() - years);
+    return date.toISOString().split('T')[0];
+  };
+
   // Render backtest mode
   const renderBacktest = () => (
     <div className="space-y-6">
       {/* Input Form */}
       {!backtestResult && !isLoading && (
         <div className="space-y-4">
-          {/* Symbol */}
-          <div>
-            <label className="text-slate-400 text-sm mb-2 block">Stock Symbol</label>
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-              <input
-                type="text"
-                value={backtestSymbol}
-                onChange={(e) => setBacktestSymbol(e.target.value.toUpperCase())}
-                placeholder="e.g., NVDA"
-                className="input-field pl-12 uppercase"
-              />
-            </div>
-            {/* Quick select from watchlist */}
-            {watchlistItems.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {watchlistItems.slice(0, 5).map((item) => (
-                  <button
-                    key={item.symbol}
-                    onClick={() => setBacktestSymbol(item.symbol)}
-                    className={`px-3 py-1 rounded-full text-xs border transition-all ${
-                      backtestSymbol === item.symbol
-                        ? 'bg-violet-500/20 border-violet-500/50 text-violet-400'
-                        : 'border-slate-700 text-slate-400 hover:border-slate-600'
-                    }`}
-                  >
-                    {item.symbol}
-                  </button>
-                ))}
+          {/* Stock Selection with Dropdown */}
+          <div className="relative">
+            <label className="text-slate-400 text-sm mb-2 block">Select Stock</label>
+            <button
+              onClick={() => setShowBacktestDropdown(!showBacktestDropdown)}
+              className="w-full input-field text-left flex items-center justify-between"
+            >
+              {backtestSymbol ? (
+                <span className="text-white">
+                  {backtestSymbol} - {watchlistItems.find(w => w.symbol === backtestSymbol)?.name || backtestSymbol}
+                </span>
+              ) : (
+                <span className="text-slate-500">Choose a stock...</span>
+              )}
+              <ChevronRight className={`w-5 h-5 text-slate-400 transition-transform ${showBacktestDropdown ? 'rotate-90' : ''}`} />
+            </button>
+
+            {/* Dropdown */}
+            {showBacktestDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-xl max-h-64 overflow-y-auto z-50">
+                {/* Portfolio Section */}
+                {allStocksForDropdown.portfolio.length > 0 && (
+                  <>
+                    <div className="px-3 py-2 text-xs text-slate-500 font-medium border-b border-slate-700">
+                      📁 Portfolio
+                    </div>
+                    {allStocksForDropdown.portfolio.map((stock) => (
+                      <button
+                        key={stock.symbol}
+                        onClick={() => {
+                          setBacktestSymbol(stock.symbol);
+                          setShowBacktestDropdown(false);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-slate-700/50 flex items-center justify-between"
+                      >
+                        <span className="text-white">{stock.symbol} <span className="text-slate-400">- {stock.name}</span></span>
+                        <span className="text-purple-400 text-sm">{stock.shares} shares</span>
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {/* Watchlist Section */}
+                {allStocksForDropdown.watchlist.length > 0 && (
+                  <>
+                    <div className="px-3 py-2 text-xs text-slate-500 font-medium border-b border-slate-700">
+                      👁️ Watchlist
+                    </div>
+                    {allStocksForDropdown.watchlist.map((stock) => (
+                      <button
+                        key={stock.symbol}
+                        onClick={() => {
+                          setBacktestSymbol(stock.symbol);
+                          setShowBacktestDropdown(false);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-slate-700/50"
+                      >
+                        <span className="text-white">{stock.symbol} <span className="text-slate-400">- {stock.name}</span></span>
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {/* Manual Entry */}
+                <div className="px-3 py-2 border-t border-slate-700">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input
+                      type="text"
+                      value={backtestSymbol}
+                      onChange={(e) => setBacktestSymbol(e.target.value.toUpperCase())}
+                      placeholder="Or type symbol..."
+                      className="w-full bg-slate-700 border-0 rounded-lg py-2 pl-9 pr-3 text-white text-sm"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Date */}
+          {/* Date with Presets */}
           <div>
             <label className="text-slate-400 text-sm mb-2 block">Purchase Date</label>
+
+            {/* Quick Date Presets */}
+            <div className="flex gap-2 mb-2">
+              {[
+                { label: '1Y ago', years: 1 },
+                { label: '2Y ago', years: 2 },
+                { label: '3Y ago', years: 3 },
+                { label: '5Y ago', years: 5 },
+              ].map((preset) => (
+                <button
+                  key={preset.years}
+                  onClick={() => setBacktestDate(getDateYearsAgo(preset.years))}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    backtestDate === getDateYearsAgo(preset.years)
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
             <div className="relative">
               <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
               <input
@@ -787,9 +929,27 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
             </div>
           </div>
 
-          {/* Amount */}
+          {/* Amount with Presets */}
           <div>
             <label className="text-slate-400 text-sm mb-2 block">Investment Amount</label>
+
+            {/* Quick Amount Presets */}
+            <div className="flex gap-2 mb-2">
+              {['100', '500', '1000', '5000', '10000'].map((amount) => (
+                <button
+                  key={amount}
+                  onClick={() => setBacktestAmount(amount)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    backtestAmount === amount
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                  }`}
+                >
+                  ${Number(amount) >= 1000 ? `${Number(amount) / 1000}K` : amount}
+                </button>
+              ))}
+            </div>
+
             <div className="relative">
               <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
               <input
@@ -896,39 +1056,157 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
       {/* Input Form */}
       {!forecastResult && !isLoading && (
         <div className="space-y-4">
-          {/* Symbol */}
-          <div>
-            <label className="text-slate-400 text-sm mb-2 block">Stock Symbol</label>
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-              <input
-                type="text"
-                value={forecastSymbol}
-                onChange={(e) => setForecastSymbol(e.target.value.toUpperCase())}
-                placeholder="e.g., TSLA"
-                className="input-field pl-12 uppercase"
-              />
-            </div>
+          {/* Stock Selection with Dropdown */}
+          <div className="relative">
+            <label className="text-slate-400 text-sm mb-2 block">Select Stock</label>
+            <button
+              onClick={() => setShowStockDropdown(!showStockDropdown)}
+              className="w-full input-field text-left flex items-center justify-between"
+            >
+              {forecastSymbol ? (
+                <span className="text-white">
+                  {forecastSymbol} - {watchlistItems.find(w => w.symbol === forecastSymbol)?.name || forecastSymbol}
+                  {holdings[forecastSymbol]?.shares > 0 && (
+                    <span className="text-purple-400 ml-2">({holdings[forecastSymbol].shares} shares)</span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-slate-500">Choose a stock...</span>
+              )}
+              <ChevronRight className={`w-5 h-5 text-slate-400 transition-transform ${showStockDropdown ? 'rotate-90' : ''}`} />
+            </button>
+
+            {/* Dropdown */}
+            {showStockDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-xl max-h-64 overflow-y-auto z-50">
+                {/* Portfolio Section */}
+                {allStocksForDropdown.portfolio.length > 0 && (
+                  <>
+                    <div className="px-3 py-2 text-xs text-slate-500 font-medium border-b border-slate-700">
+                      📁 Portfolio
+                    </div>
+                    {allStocksForDropdown.portfolio.map((stock) => (
+                      <button
+                        key={stock.symbol}
+                        onClick={() => {
+                          setForecastSymbol(stock.symbol);
+                          setShowStockDropdown(false);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-slate-700/50 flex items-center justify-between"
+                      >
+                        <span className="text-white">{stock.symbol} <span className="text-slate-400">- {stock.name}</span></span>
+                        <span className="text-purple-400 text-sm">{stock.shares} shares</span>
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {/* Watchlist Section */}
+                {allStocksForDropdown.watchlist.length > 0 && (
+                  <>
+                    <div className="px-3 py-2 text-xs text-slate-500 font-medium border-b border-slate-700">
+                      👁️ Watchlist
+                    </div>
+                    {allStocksForDropdown.watchlist.map((stock) => (
+                      <button
+                        key={stock.symbol}
+                        onClick={() => {
+                          setForecastSymbol(stock.symbol);
+                          setShowStockDropdown(false);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-slate-700/50"
+                      >
+                        <span className="text-white">{stock.symbol} <span className="text-slate-400">- {stock.name}</span></span>
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                {/* Manual Entry */}
+                <div className="px-3 py-2 border-t border-slate-700">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input
+                      type="text"
+                      value={forecastSymbol}
+                      onChange={(e) => setForecastSymbol(e.target.value.toUpperCase())}
+                      placeholder="Or type symbol..."
+                      className="w-full bg-slate-700 border-0 rounded-lg py-2 pl-9 pr-3 text-white text-sm"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Target Price */}
+          {/* Current Price Display */}
+          {forecastCurrentPrice && (
+            <div className="glass-card p-3 flex items-center justify-between">
+              <span className="text-slate-400 text-sm">Current Price:</span>
+              <span className="text-white font-semibold">${forecastCurrentPrice.toFixed(2)}</span>
+            </div>
+          )}
+
+          {/* Target Price with Slider */}
           <div>
             <label className="text-slate-400 text-sm mb-2 block">Target Price</label>
-            <div className="relative">
-              <Target className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+
+            {/* Quick Percent Presets */}
+            <div className="flex gap-2 mb-3">
+              {[5, 10, 25, 50, 100].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setTargetPercent(p)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    targetPercent === p
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                  }`}
+                >
+                  +{p}%
+                </button>
+              ))}
+            </div>
+
+            {/* Custom Slider */}
+            <div className="space-y-2">
               <input
-                type="number"
-                value={targetPrice}
-                onChange={(e) => setTargetPrice(e.target.value)}
-                placeholder="500"
-                className="input-field pl-12"
+                type="range"
+                min={-50}
+                max={200}
+                value={targetPercent}
+                onChange={(e) => setTargetPercent(Number(e.target.value))}
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
               />
+              <div className="flex justify-between text-xs text-slate-500">
+                <span>-50%</span>
+                <span className={`font-medium ${targetPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {targetPercent >= 0 ? '+' : ''}{targetPercent}%
+                </span>
+                <span>+200%</span>
+              </div>
+            </div>
+
+            {/* Target Price Result */}
+            <div className="mt-3 p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-sm">Target:</span>
+                <span className="text-purple-400 font-bold text-lg">
+                  ${targetPrice || '0.00'}
+                  {forecastCurrentPrice && (
+                    <span className="text-sm ml-2 text-slate-400">
+                      ({targetPercent >= 0 ? '+' : ''}{targetPercent}%)
+                    </span>
+                  )}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Current Holdings (optional) */}
+          {/* Shares Input with Auto-fill */}
           <div>
-            <label className="text-slate-400 text-sm mb-2 block">Your Shares (optional)</label>
+            <label className="text-slate-400 text-sm mb-2 block">Your Shares</label>
             <input
               type="number"
               value={forecastShares}
@@ -936,6 +1214,11 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
               placeholder="0"
               className="input-field"
             />
+            {holdings[forecastSymbol]?.shares > 0 && forecastShares === holdings[forecastSymbol].shares.toString() && (
+              <p className="text-emerald-400 text-xs mt-1 flex items-center gap-1">
+                ✓ Auto-filled from portfolio
+              </p>
+            )}
           </div>
 
           <button
@@ -1212,6 +1495,10 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
     const totalProfit = totalTarget - totalCurrent;
     const totalChangePercent = totalCurrent > 0 ? ((totalTarget - totalCurrent) / totalCurrent) * 100 : 0;
 
+    // Check for stocks without analysis
+    const stocksWithoutAnalysis = moonProjections.filter(p => !p.hasAnalysis);
+    const allMissingAnalysis = stocksWithoutAnalysis.length === moonProjections.length;
+
     // Lambo calculator
     const lamboPrice = 300000;
     const rolexPrice = 15000;
@@ -1228,6 +1515,29 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
               <h2 className="text-2xl font-bold text-gradient-bull">PORTFOLIO MOON MODE</h2>
               <p className="text-slate-400 text-sm">"When Lambo?"</p>
             </div>
+
+            {/* Warning for missing analysis */}
+            {stocksWithoutAnalysis.length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">⚠️</span>
+                  <div className="flex-1">
+                    <p className="text-amber-400 font-medium text-sm">
+                      {allMissingAnalysis
+                        ? 'No AI analysis found - using default +30% targets'
+                        : `${stocksWithoutAnalysis.length} stock${stocksWithoutAnalysis.length > 1 ? 's' : ''} using default +30% target`
+                      }
+                    </p>
+                    <p className="text-amber-400/70 text-xs mt-1">
+                      {stocksWithoutAnalysis.map(p => p.symbol).join(', ')}
+                    </p>
+                    <p className="text-slate-500 text-xs mt-2">
+                      Run "Scope" on these stocks for accurate bull case targets
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Summary Card */}
             <div className="glass-card p-5 border-emerald-500/30 mb-4">
@@ -1254,15 +1564,23 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
               <div className="space-y-3">
                 {moonProjections.map((p) => (
                   <div key={p.symbol} className="flex items-center justify-between">
-                    <span className="text-white font-medium">{p.symbol}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-medium">{p.symbol}</span>
+                      {!p.hasAnalysis && (
+                        <span className="text-amber-400/60 text-xs" title="Using default +30%">*</span>
+                      )}
+                    </div>
                     <div className="text-right">
                       <span className="text-slate-400">${p.currentPrice.toFixed(0)} → </span>
-                      <span className="text-emerald-400">${p.targetPrice.toFixed(0)}</span>
-                      <span className="text-emerald-400/70 text-sm ml-2">(+{p.changePercent.toFixed(0)}%)</span>
+                      <span className={p.hasAnalysis ? 'text-emerald-400' : 'text-emerald-400/60'}>${p.targetPrice.toFixed(0)}</span>
+                      <span className={`text-sm ml-2 ${p.hasAnalysis ? 'text-emerald-400/70' : 'text-emerald-400/50'}`}>(+{p.changePercent.toFixed(0)}%)</span>
                     </div>
                   </div>
                 ))}
               </div>
+              {stocksWithoutAnalysis.length > 0 && (
+                <p className="text-slate-600 text-xs mt-3">* Using default +30% target</p>
+              )}
             </div>
 
             {/* When Lambo Calculator */}
@@ -1327,6 +1645,10 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
     const totalLoss = totalTarget - totalCurrent;
     const totalChangePercent = totalCurrent > 0 ? ((totalTarget - totalCurrent) / totalCurrent) * 100 : 0;
 
+    // Check for stocks without analysis
+    const stocksWithoutAnalysis = doomProjections.filter(p => !p.hasAnalysis);
+    const allMissingAnalysis = stocksWithoutAnalysis.length === doomProjections.length;
+
     // Damage report
     const starbucksPrice = 7;
     const netflixMonthly = 15;
@@ -1342,6 +1664,29 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
               <h2 className="text-2xl font-bold text-gradient-bear">PORTFOLIO DOOM MODE</h2>
               <p className="text-slate-400 text-sm">"Maximum Pain"</p>
             </div>
+
+            {/* Warning for missing analysis */}
+            {stocksWithoutAnalysis.length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">⚠️</span>
+                  <div className="flex-1">
+                    <p className="text-amber-400 font-medium text-sm">
+                      {allMissingAnalysis
+                        ? 'No AI analysis found - using default -30% targets'
+                        : `${stocksWithoutAnalysis.length} stock${stocksWithoutAnalysis.length > 1 ? 's' : ''} using default -30% target`
+                      }
+                    </p>
+                    <p className="text-amber-400/70 text-xs mt-1">
+                      {stocksWithoutAnalysis.map(p => p.symbol).join(', ')}
+                    </p>
+                    <p className="text-slate-500 text-xs mt-2">
+                      Run "Scope" on these stocks for accurate bear case targets
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Summary Card */}
             <div className="glass-card p-5 border-rose-500/30 mb-4">
@@ -1368,15 +1713,23 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
               <div className="space-y-3">
                 {doomProjections.map((p) => (
                   <div key={p.symbol} className="flex items-center justify-between">
-                    <span className="text-white font-medium">{p.symbol}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-medium">{p.symbol}</span>
+                      {!p.hasAnalysis && (
+                        <span className="text-amber-400/60 text-xs" title="Using default -30%">*</span>
+                      )}
+                    </div>
                     <div className="text-right">
                       <span className="text-slate-400">${p.currentPrice.toFixed(0)} → </span>
-                      <span className="text-rose-400">${p.targetPrice.toFixed(0)}</span>
-                      <span className="text-rose-400/70 text-sm ml-2">({p.changePercent.toFixed(0)}%)</span>
+                      <span className={p.hasAnalysis ? 'text-rose-400' : 'text-rose-400/60'}>${p.targetPrice.toFixed(0)}</span>
+                      <span className={`text-sm ml-2 ${p.hasAnalysis ? 'text-rose-400/70' : 'text-rose-400/50'}`}>({p.changePercent.toFixed(0)}%)</span>
                     </div>
                   </div>
                 ))}
               </div>
+              {stocksWithoutAnalysis.length > 0 && (
+                <p className="text-slate-600 text-xs mt-3">* Using default -30% target</p>
+              )}
             </div>
 
             {/* Damage Report */}
