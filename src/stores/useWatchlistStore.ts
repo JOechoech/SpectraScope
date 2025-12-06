@@ -10,6 +10,11 @@ export interface Holding {
   addedAt: string;
 }
 
+interface ScopedStockInfo {
+  scopedFrom: string; // Sector ID
+  scopedPrice?: number; // Price when scoped
+}
+
 interface WatchlistState {
   items: WatchlistItem[];
   selectedSymbol: string | null;
@@ -17,7 +22,7 @@ interface WatchlistState {
   holdings: Record<string, Holding>; // Portfolio holdings
 
   // Actions
-  addStock: (stock: Stock) => void;
+  addStock: (stock: Stock, scopedInfo?: ScopedStockInfo) => void;
   removeStock: (symbol: string) => void;
   updateStock: (symbol: string, updates: Partial<WatchlistItem>) => void;
   selectStock: (symbol: string | null) => void;
@@ -100,7 +105,7 @@ export const useWatchlistStore = create<WatchlistState>()(
       analysisHistory: {},
       holdings: {},
 
-      addStock: (stock) =>
+      addStock: (stock, scopedInfo) =>
         set((state) => {
           // ALWAYS uppercase for consistency
           const symbol = stock.symbol.toUpperCase();
@@ -108,10 +113,21 @@ export const useWatchlistStore = create<WatchlistState>()(
           if (state.items.some((item) => item.symbol === symbol)) {
             return state;
           }
+          const now = new Date().toISOString();
           return {
             items: [
               ...state.items,
-              { ...stock, symbol, addedAt: new Date().toISOString() },
+              {
+                ...stock,
+                symbol,
+                addedAt: now,
+                // Add scoped info if provided
+                ...(scopedInfo && {
+                  scopedFrom: scopedInfo.scopedFrom,
+                  scopedAt: now,
+                  scopedPrice: scopedInfo.scopedPrice,
+                }),
+              },
             ],
           };
         }),

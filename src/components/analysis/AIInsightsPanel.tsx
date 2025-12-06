@@ -142,9 +142,6 @@ const GrokInsightCard = memo(function GrokInsightCard({
             X/Twitter Sentiment
           </span>
           <span className="text-cyan-500/60 text-xs">(via Grok)</span>
-          <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">
-            LIVE
-          </span>
         </div>
         <span className="text-slate-500 text-xs">{confidence}% confidence</span>
       </div>
@@ -243,9 +240,6 @@ const GeminiInsightCard = memo(function GeminiInsightCard({
             Analyst Research
           </span>
           <span className="text-purple-500/60 text-xs">(via Gemini)</span>
-          <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">
-            LIVE
-          </span>
         </div>
         <span className="text-slate-500 text-xs">{confidence}% confidence</span>
       </div>
@@ -424,17 +418,14 @@ const SourcesSection = memo(function SourcesSection({
       <div className="flex items-center gap-2 mb-3">
         <ExternalLink size={14} className="text-slate-400" />
         <span className="text-slate-400 text-sm font-medium">
-          Live Data Sources
-        </span>
-        <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">
-          LIVE
+          Data Sources
         </span>
       </div>
 
       {/* Date Range */}
       {dateRange && (
         <div className="text-slate-500 text-xs mb-2">
-          📅 X/Twitter data range: {dateRange}
+          📅 X/Twitter data: {dateRange}
         </div>
       )}
 
@@ -461,7 +452,7 @@ const SourcesSection = memo(function SourcesSection({
       )}
 
       <div className="mt-3 pt-2 border-t border-slate-800/50 text-[10px] text-slate-600">
-        Data fetched via live web search, not from AI training data
+        Data fetched via web search
       </div>
     </div>
   );

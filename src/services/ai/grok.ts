@@ -9,6 +9,28 @@
 
 const BASE_URL = 'https://api.x.ai/v1';
 
+// Get today's date and 7 days ago for explicit date range
+function getDateRange(): { today: string; sevenDaysAgo: string; isoToday: string; isoSevenDaysAgo: string } {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const formatEU = (d: Date) => {
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}.${month}.${year}`;
+  };
+
+  const formatISO = (d: Date) => d.toISOString().split('T')[0];
+
+  return {
+    today: formatEU(now),
+    sevenDaysAgo: formatEU(sevenDaysAgo),
+    isoToday: formatISO(now),
+    isoSevenDaysAgo: formatISO(sevenDaysAgo),
+  };
+}
+
 export interface SocialSentimentResult {
   symbol: string;
   sentiment: {
@@ -48,6 +70,8 @@ export async function getXSentiment(
   }
 
   try {
+    const dates = getDateRange();
+
     // Grok API for chat completions with X context
     const response = await fetch(`${BASE_URL}/chat/completions`, {
       method: 'POST',
@@ -56,18 +80,21 @@ export async function getXSentiment(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'grok-4-1-fast-reasoning',
+        model: 'grok-3-mini',
         messages: [
           {
             role: 'system',
             content: `You are a social media sentiment analyst with LIVE access to X/Twitter data.
 
-CRITICAL: You must analyze REAL, CURRENT posts from X. Use your live X data access.
-Focus ONLY on posts from the LAST 7 DAYS. Do NOT use training data.
+TODAY'S DATE: ${dates.today} (${dates.isoToday})
 
-Analyze the current sentiment around a stock and return ONLY valid JSON.
+CRITICAL RULES:
+1. Only analyze posts from ${dates.isoSevenDaysAgo} to ${dates.isoToday}
+2. If you cannot find recent posts, say "No recent mentions found"
+3. Do NOT use training data or old posts
+4. All dates in topTakes must be between ${dates.isoSevenDaysAgo} and ${dates.isoToday}
 
-Output format:
+Return ONLY valid JSON:
 {
   "sentiment": {
     "score": <number -1 to 1>,
@@ -75,32 +102,25 @@ Output format:
     "confidence": <number 0-100>
   },
   "metrics": {
-    "mentionCount": <estimated number from last 7 days>,
+    "mentionCount": <estimated mentions in last 7 days>,
     "sentimentBreakdown": { "positive": <n>, "neutral": <n>, "negative": <n> },
-    "trending": <boolean - is it trending NOW>,
+    "trending": <boolean>,
     "buzzLevel": "<low|medium|high|viral>"
   },
   "topTakes": [
-    { "text": "<actual post content or paraphrase>", "engagement": <likes+retweets>, "sentiment": "<positive|neutral|negative>", "date": "<YYYY-MM-DD>" }
+    { "text": "<post content>", "engagement": <number>, "sentiment": "<positive|neutral|negative>", "date": "<YYYY-MM-DD>" }
   ],
   "retailVsInstitutional": "<retail-heavy|mixed|institutional>",
-  "dateRange": "<earliest date> to <latest date>"
-}
-
-IMPORTANT:
-- Include REAL posts with dates from the last 7 days
-- Note if there's unusual activity or volume spikes
-- Identify if any influential accounts (fintwit, analysts) are posting`,
+  "dateRange": "${dates.sevenDaysAgo} to ${dates.today}"
+}`,
           },
           {
             role: 'user',
-            content: `Analyze CURRENT X/Twitter sentiment for ${symbol} (${companyName}) from the LAST 7 DAYS.
+            content: `Find X/Twitter posts about $${symbol} (${companyName}) from the LAST 7 DAYS ONLY (${dates.sevenDaysAgo} to ${dates.today}).
 
-Search for $${symbol} and ${companyName} on X. What are people saying RIGHT NOW?
-- Is it trending?
-- Any viral posts in the last 7 days?
-- What's the retail vs institutional breakdown?
-- Include actual post examples with dates.`,
+What are people saying about this stock RIGHT NOW in ${dates.today.split('.')[1]}/${dates.today.split('.')[2]}?
+
+If there are no recent posts, return mentionCount: 0 and empty topTakes.`,
           },
         ],
         temperature: 0.3,
@@ -136,7 +156,7 @@ Search for $${symbol} and ${companyName} on X. What are people saying RIGHT NOW?
       metrics: result.metrics,
       topTakes: result.topTakes || [],
       retailVsInstitutional: result.retailVsInstitutional || 'mixed',
-      dateRange: result.dateRange || 'Last 7 days',
+      dateRange: result.dateRange || `${dates.sevenDaysAgo} to ${dates.today}`,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {

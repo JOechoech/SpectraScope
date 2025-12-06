@@ -209,6 +209,10 @@ export interface WatchlistItem extends Stock {
     timestamp: string;
     score?: number;
   };
+  // Scoped from SpectraScope
+  scopedFrom?: string; // Sector ID (e.g., 'biotech', 'meme')
+  scopedAt?: string; // ISO timestamp when scoped
+  scopedPrice?: number; // Price when added from scope
 }
 
 export interface PriceAlert {
