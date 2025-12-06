@@ -24,20 +24,26 @@ interface AISource {
   powerEnd: number;    // Power level when this AI completes
 }
 
-// Pre-Claude AIs (each contributes 15%)
+// NEW ORCHESTRATOR FLOW (~45 seconds total)
+// Phase 1: Opus orchestrator analyzes ticker (0-25%)
+// Phase 2: Parallel AI searches with custom prompts (25-60%)
+// Phase 3: Sonnet synthesis (60-100%)
+
 const AI_SOURCES: AISource[] = [
-  { id: 'technical', name: 'TECHNICALS', icon: '📊', color: '#3b82f6', description: 'ANALYZING TECHNICAL INDICATORS...', powerStart: 0, powerEnd: 15 },
-  { id: 'openai', name: 'OPENAI', icon: '🤖', color: '#10b981', description: 'OPENAI SCANNING LATEST NEWS...', powerStart: 15, powerEnd: 30 },
-  { id: 'grok', name: 'GROK', icon: '𝕏', color: '#1d9bf0', description: 'GROK ANALYZING X SENTIMENT...', powerStart: 30, powerEnd: 45 },
-  { id: 'gemini', name: 'GEMINI', icon: '✦', color: '#8b5cf6', description: 'GEMINI RESEARCHING WEB DATA...', powerStart: 45, powerEnd: 60 },
-  { id: 'claude', name: 'CLAUDE', icon: '🧠', color: '#d97706', description: 'CLAUDE RECEIVING DATA...', powerStart: 60, powerEnd: 70 },
+  { id: 'opus', name: 'OPUS', icon: '🧠', color: '#d97706', description: 'OPUS ANALYZING TICKER...', powerStart: 0, powerEnd: 15 },
+  { id: 'strategy', name: 'STRATEGY', icon: '🎯', color: '#f59e0b', description: 'OPUS GENERATING SEARCH STRATEGY...', powerStart: 15, powerEnd: 25 },
+  { id: 'grok', name: 'GROK', icon: '𝕏', color: '#1d9bf0', description: 'GROK SCANNING X/TWITTER...', powerStart: 25, powerEnd: 40 },
+  { id: 'openai', name: 'OPENAI', icon: '🤖', color: '#10b981', description: 'OPENAI SEARCHING PRESS RELEASES...', powerStart: 25, powerEnd: 40 },
+  { id: 'gemini', name: 'GEMINI', icon: '✦', color: '#8b5cf6', description: 'GEMINI SEARCHING NEWS...', powerStart: 25, powerEnd: 40 },
+  { id: 'sonnet', name: 'SONNET', icon: '📊', color: '#6366f1', description: 'SONNET RECEIVING DATA...', powerStart: 40, powerEnd: 50 },
 ];
 
-// Claude sub-phases (60-100%)
+// Sonnet sub-phases (50-100%)
 const CLAUDE_PHASES = [
-  { description: 'CLAUDE RECEIVING DATA...', powerEnd: 70 },
-  { description: 'ANALYZING MARKET CONTEXT...', powerEnd: 80 },
-  { description: 'GENERATING SCENARIOS...', powerEnd: 90 },
+  { description: 'SONNET RECEIVING DATA...', powerEnd: 50 },
+  { description: 'SONNET CROSS-REFERENCING...', powerEnd: 65 },
+  { description: 'GENERATING SCENARIOS...', powerEnd: 80 },
+  { description: 'CALCULATING PRICE TARGETS...', powerEnd: 90 },
   { description: 'FINALIZING REPORT...', powerEnd: 100 },
 ];
 
@@ -368,7 +374,7 @@ export const WarpAnimation = memo(function WarpAnimation({
             <div className="text-4xl mb-2">🔭</div>
             <div className="text-white/80 font-semibold tracking-wider">SPECTRASCOPE</div>
             <div className="text-white/40 text-xs mt-1">
-              {phase === 'synthesizing' ? '🧠 Claude is synthesizing...' : 'Gathering intelligence...'}
+              {phase === 'synthesizing' ? '📊 Sonnet is synthesizing...' : 'Gathering intelligence...'}
             </div>
           </div>
         )}

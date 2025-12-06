@@ -354,10 +354,14 @@ Only return valid JSON.`,
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          // Normalize signal to lowercase (AI might return BULLISH/Bullish/bullish)
-          const results = (parsed.results || []).map((r: ScanResult) => ({
-            ...r,
-            signal: (r.signal?.toLowerCase() || 'neutral') as 'bullish' | 'bearish' | 'neutral',
+          // Normalize signal to lowercase (AI might return BULLISH/Bullish/bullish or use "sentiment" field)
+          const results = (parsed.results || []).map((r: any) => ({
+            symbol: r.symbol,
+            name: r.name,
+            // Handle both "signal" and "sentiment" field names from AI
+            signal: ((r.signal || r.sentiment || 'neutral') as string).toLowerCase() as 'bullish' | 'bearish' | 'neutral',
+            reason: r.reason || '',
+            momentum: r.momentum,
           }));
           const timestamp = new Date();
           setScanResults(results);
@@ -443,10 +447,14 @@ Only return valid JSON.`,
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          // Normalize signal to lowercase (AI might return BULLISH/Bullish/bullish)
-          const results = (parsed.results || []).map((r: ScanResult) => ({
-            ...r,
-            signal: (r.signal?.toLowerCase() || 'neutral') as 'bullish' | 'bearish' | 'neutral',
+          // Normalize signal to lowercase (AI might return BULLISH/Bullish/bullish or use "sentiment" field)
+          const results = (parsed.results || []).map((r: any) => ({
+            symbol: r.symbol,
+            name: r.name,
+            // Handle both "signal" and "sentiment" field names from AI
+            signal: ((r.signal || r.sentiment || 'neutral') as string).toLowerCase() as 'bullish' | 'bearish' | 'neutral',
+            reason: r.reason || '',
+            momentum: r.momentum,
           }));
           const timestamp = new Date();
           setScanResults(results);

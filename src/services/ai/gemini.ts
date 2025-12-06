@@ -28,11 +28,21 @@ export interface GeminiResearchResult {
   timestamp: string;
 }
 
+/**
+ * Get Gemini research with optional custom prompt from orchestrator
+ *
+ * @param symbol - Stock symbol
+ * @param companyName - Company name
+ * @param currentPrice - Current stock price
+ * @param apiKey - Gemini API key
+ * @param customPrompt - Optional custom prompt from Claude Opus orchestrator
+ */
 export async function getGeminiResearch(
   symbol: string,
   companyName: string,
   currentPrice: number,
-  apiKey: string
+  apiKey: string,
+  customPrompt?: string
 ): Promise<GeminiResearchResult | null> {
   if (!apiKey) {
     console.log('Gemini API key not configured');
@@ -40,19 +50,33 @@ export async function getGeminiResearch(
   }
 
   try {
-    const response = await fetch(
-      `${BASE_URL}/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `You are a financial research analyst with access to LIVE WEB DATA. Analyze ${symbol} (${companyName}), currently trading at $${currentPrice.toFixed(2)}.
+    // Build the prompt - use custom if provided
+    const researchPrompt = customPrompt
+      ? `${customPrompt}
+
+You are a financial research analyst with access to LIVE WEB DATA. Analyze ${symbol} (${companyName}), currently trading at $${currentPrice.toFixed(2)}.
+
+IMPORTANT: Use Google Search to find CURRENT, REAL-TIME information from the last 14 days.
+
+OUTPUT FORMAT (JSON only):
+{
+  "research": {
+    "analystConsensus": "<strong-buy|buy|hold|sell|strong-sell>",
+    "averagePriceTarget": <number or null>,
+    "priceTargetRange": { "low": <number>, "high": <number> } or null
+  },
+  "keyFindings": ["<finding 1 with date>", "<finding 2 with date>", "<finding 3 with date>"],
+  "recentDevelopments": ["<development 1 with date>", "<development 2 with date>"],
+  "competitivePosition": "<brief assessment>",
+  "risks": ["<risk 1>", "<risk 2>"],
+  "opportunities": ["<opportunity 1>", "<opportunity 2>"],
+  "sources": [
+    { "title": "<article title>", "date": "<YYYY-MM-DD>", "url": "<url if available>" }
+  ]
+}
+
+CRITICAL: Include specific dates for all findings.`
+      : `You are a financial research analyst with access to LIVE WEB DATA. Analyze ${symbol} (${companyName}), currently trading at $${currentPrice.toFixed(2)}.
 
 IMPORTANT: Use Google Search to find CURRENT, REAL-TIME information. Do NOT rely on training data.
 
@@ -81,7 +105,21 @@ Focus on:
 - Competitive positioning
 - Main risks and opportunities
 
-CRITICAL: Include specific dates for all findings. Return ONLY valid JSON, no markdown.`,
+CRITICAL: Include specific dates for all findings. Return ONLY valid JSON, no markdown.`;
+
+    const response = await fetch(
+      `${BASE_URL}/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: researchPrompt,
                 },
               ],
             },

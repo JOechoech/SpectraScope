@@ -49,11 +49,13 @@ function getCompanyName(symbol: string): string {
  *
  * @param symbol - Stock symbol
  * @param companyName - Optional company name
+ * @param customPrompt - Optional custom prompt from Claude Opus orchestrator
  * @returns News intelligence report or null if unavailable
  */
 export async function gatherNewsIntelligence(
   symbol: string,
-  companyName?: string
+  companyName?: string,
+  customPrompt?: string
 ): Promise<NewsReport | null> {
   try {
     // Use OpenAI API key
@@ -66,8 +68,8 @@ export async function gatherNewsIntelligence(
 
     const company = companyName || getCompanyName(symbol);
 
-    // Fetch news analysis from OpenAI
-    const result = await getOpenAINewsAnalysis(symbol, company, apiKey);
+    // Fetch news analysis from OpenAI (with custom prompt if provided)
+    const result = await getOpenAINewsAnalysis(symbol, company, apiKey, customPrompt);
 
     if (!result) {
       console.warn(`[News] No news analysis available for ${symbol}`);
