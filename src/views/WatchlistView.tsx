@@ -360,14 +360,36 @@ export const WatchlistView = memo(function WatchlistView({
             return <StockCardSkeleton key={symbol} />;
           }
 
+          // Handle missing quote data gracefully - NO crash!
+          if (!data.quote) {
+            return (
+              <div
+                key={symbol}
+                onClick={() => onSelectStock(symbol)}
+                className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4 cursor-pointer hover:bg-slate-800/50 transition-colors"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="text-white font-semibold">{symbol}</span>
+                    <p className="text-slate-500 text-sm">{watchlistItem?.name || symbol}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-slate-500">Price unavailable</p>
+                    <p className="text-slate-600 text-sm">Add API key</p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           return (
             <StockCard
               key={symbol}
               symbol={symbol}
               name={watchlistItem?.name || symbol}
-              price={data.quote.price}
-              change={data.quote.change}
-              changePercent={data.quote.changePercent}
+              price={data.quote.price ?? 0}
+              change={data.quote.change ?? 0}
+              changePercent={data.quote.changePercent ?? 0}
               sparklineData={data.sparkline}
               signalScore={data.signalScore}
               onClick={() => onSelectStock(symbol)}
