@@ -102,14 +102,16 @@ export const useWatchlistStore = create<WatchlistState>()(
 
       addStock: (stock) =>
         set((state) => {
+          // ALWAYS uppercase for consistency
+          const symbol = stock.symbol.toUpperCase();
           // Prevent duplicates
-          if (state.items.some((item) => item.symbol === stock.symbol)) {
+          if (state.items.some((item) => item.symbol === symbol)) {
             return state;
           }
           return {
             items: [
               ...state.items,
-              { ...stock, addedAt: new Date().toISOString() },
+              { ...stock, symbol, addedAt: new Date().toISOString() },
             ],
           };
         }),
@@ -139,39 +141,43 @@ export const useWatchlistStore = create<WatchlistState>()(
           return { items };
         }),
 
-      // Holdings management
-      setShares: (symbol, shares) =>
+      // Holdings management - ALWAYS use uppercase symbols!
+      setShares: (symbol, shares) => {
+        const upperSymbol = symbol.toUpperCase();
         set((state) => ({
           holdings: {
             ...state.holdings,
-            [symbol]: {
-              ...state.holdings[symbol],
-              symbol,
+            [upperSymbol]: {
+              ...state.holdings[upperSymbol],
+              symbol: upperSymbol,
               shares: Math.max(0, shares),
               addedAt:
-                state.holdings[symbol]?.addedAt || new Date().toISOString(),
+                state.holdings[upperSymbol]?.addedAt || new Date().toISOString(),
             },
           },
-        })),
+        }));
+      },
 
-      setAvgCost: (symbol, avgCost) =>
+      setAvgCost: (symbol, avgCost) => {
+        const upperSymbol = symbol.toUpperCase();
         set((state) => ({
           holdings: {
             ...state.holdings,
-            [symbol]: {
-              ...state.holdings[symbol],
-              symbol,
+            [upperSymbol]: {
+              ...state.holdings[upperSymbol],
+              symbol: upperSymbol,
               avgCost,
-              shares: state.holdings[symbol]?.shares || 0,
+              shares: state.holdings[upperSymbol]?.shares || 0,
               addedAt:
-                state.holdings[symbol]?.addedAt || new Date().toISOString(),
+                state.holdings[upperSymbol]?.addedAt || new Date().toISOString(),
             },
           },
-        })),
+        }));
+      },
 
-      getHolding: (symbol) => get().holdings[symbol] || null,
+      getHolding: (symbol) => get().holdings[symbol.toUpperCase()] || null,
 
-      getTotalShares: (symbol) => get().holdings[symbol]?.shares || 0,
+      getTotalShares: (symbol) => get().holdings[symbol.toUpperCase()]?.shares || 0,
 
       getHoldingsWithShares: () => {
         const { holdings } = get();
