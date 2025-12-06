@@ -25,6 +25,8 @@ import { AIInsightsPanel } from '@/components/analysis/AIInsightsPanel';
 import { BottomLine } from '@/components/analysis/BottomLine';
 import { HoldingsInput } from '@/components/portfolio/HoldingsInput';
 import { WarpAnimation } from '@/components/effects/WarpAnimation';
+import { AnalysisAnimation, type AnimationPhase } from '@/components/effects/AnalysisAnimation';
+import type { GatherIntelligenceProgress } from '@/services/intelligence';
 import { IntelligenceReport, type SourceReport, type ClaudeAssessment } from '@/components/analysis/IntelligenceReport';
 import {
   getQuote,
@@ -98,6 +100,25 @@ export const DetailView = memo(function DetailView({
   // 3-phase analysis flow
   const [analysisPhase, setAnalysisPhase] = useState<AnalysisPhase>('idle');
   const [sourceReports, setSourceReports] = useState<SourceReport[]>([]);
+
+  // Animation state
+  const [animationPhase, setAnimationPhase] = useState<AnimationPhase>('idle');
+  const [animationKeywords, setAnimationKeywords] = useState<string[]>([]);
+  const [agentData, setAgentData] = useState<{
+    grok: { keywords: string[]; progress: number };
+    openai: { keywords: string[]; progress: number };
+    gemini: { keywords: string[]; progress: number };
+  }>({
+    grok: { keywords: [], progress: 0 },
+    openai: { keywords: [], progress: 0 },
+    gemini: { keywords: [], progress: 0 },
+  });
+  const [scenarioProgress, setScenarioProgress] = useState({
+    bull: 0,
+    bear: 0,
+    base: 0,
+  });
+  const useNewAnimation = true; // Use new animated flow (set to false for legacy WarpAnimation)
 
   // Export functionality
   const analysisRef = useRef<HTMLDivElement>(null);
@@ -494,24 +515,62 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
     }
   }, [symbol]);
 
+  // Handle animation progress updates
+  const handleAnimationProgress = useCallback((progress: GatherIntelligenceProgress) => {
+    console.debug('[Animation] Progress update:', progress.phase);
+
+    // Map intelligence phases to animation phases
+    if (progress.phase === 'orchestrating') {
+      setAnimationPhase('orchestrating');
+      if (progress.keywords) {
+        setAnimationKeywords(progress.keywords);
+      }
+    } else if (progress.phase === 'searching') {
+      setAnimationPhase('searching');
+      if (progress.agentProgress) {
+        setAgentData({
+          grok: progress.agentProgress.grok || { keywords: [], progress: 0 },
+          openai: progress.agentProgress.openai || { keywords: [], progress: 0 },
+          gemini: progress.agentProgress.gemini || { keywords: [], progress: 0 },
+        });
+      }
+    } else if (progress.phase === 'synthesizing') {
+      setAnimationPhase('synthesizing');
+    }
+  }, []);
+
   const runAnalysis = useCallback(async () => {
     if (!anthropicKey || !quote) return;
 
     setAnalysisPhase('gathering');
     setError(null);
 
+    // Reset animation state
+    setAnimationPhase('orchestrating');
+    setAnimationKeywords([]);
+    setAgentData({
+      grok: { keywords: [], progress: 0 },
+      openai: { keywords: [], progress: 0 },
+      gemini: { keywords: [], progress: 0 },
+    });
+    setScenarioProgress({ bull: 0, bear: 0, base: 0 });
+
     // Track start time for minimum animation duration
     const startTime = Date.now();
     const MIN_ANIMATION_TIME = 6000; // 6 seconds for AI arrivals
 
     try {
-      // Gather intelligence from all sources
+      // Gather intelligence from all sources with progress callback
       const intelligence = await gatherIntelligence({
         symbol,
         companyName,
         priceData,
         currentPrice: quote.price,
+        onProgress: handleAnimationProgress,
       });
+
+      // Transition to finalizing phase for scenario generation
+      setAnimationPhase('finalizing');
 
       // Run Claude synthesis
       const result = await synthesizeFromIntelligence(
@@ -519,11 +578,17 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
         anthropicKey
       );
 
+      // Animate scenario progress completion
+      setScenarioProgress({ bull: 100, bear: 100, base: 100 });
+
       // Ensure minimum animation time for better UX
       const elapsed = Date.now() - startTime;
       if (elapsed < MIN_ANIMATION_TIME) {
         await new Promise((r) => setTimeout(r, MIN_ANIMATION_TIME - elapsed));
       }
+
+      // Mark animation complete
+      setAnimationPhase('complete');
 
       // Build source reports for Intelligence Report
       const reports: SourceReport[] = [
@@ -629,8 +694,9 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
       console.error('Analysis failed:', err);
       setError('Analysis failed. Please try again.');
       setAnalysisPhase('idle');
+      setAnimationPhase('idle');
     }
-  }, [symbol, companyName, priceData, quote, anthropicKey, addAnalysis]);
+  }, [symbol, companyName, priceData, quote, anthropicKey, addAnalysis, handleAnimationProgress]);
 
   if (isLoadingPrice) {
     return <DetailViewSkeleton onBack={onBack} symbol={symbol} />;
@@ -642,8 +708,18 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
 
   return (
     <>
-      {/* Warp Animation Overlay */}
-      <WarpAnimation isActive={analysisPhase === 'gathering'} />
+      {/* Animation Overlay - New animated flow or legacy warp animation */}
+      {useNewAnimation ? (
+        <AnalysisAnimation
+          isActive={analysisPhase === 'gathering'}
+          phase={animationPhase}
+          keywords={animationKeywords}
+          agentData={agentData}
+          scenarioProgress={scenarioProgress}
+        />
+      ) : (
+        <WarpAnimation isActive={analysisPhase === 'gathering'} />
+      )}
 
       {/* Intelligence Report Overlay */}
       {analysisPhase === 'report' && analysis && (
