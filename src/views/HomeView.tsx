@@ -2,19 +2,33 @@
  * HomeView - Market Overview with Indices, Portfolio, and Watchlist
  *
  * Features:
- * - Market indices via ETFs (SPY, QQQ, etc.)
+ * - Market indices via ETFs with sparklines
  * - Portfolio value with individual holdings
- * - Watchlist with edit/remove functionality
+ * - Watchlist with signals, sparklines, and glow effects
  * - Compact design
  */
 
 import { useState, useEffect, useCallback, memo, useMemo } from 'react';
-import { RefreshCw, Settings, Minus, TrendingUp, TrendingDown } from 'lucide-react';
+import { RefreshCw, Settings, Minus } from 'lucide-react';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useQuoteCacheStore } from '@/stores/useQuoteCacheStore';
 import * as marketData from '@/services/marketData';
+import {
+  calculateRSI,
+  calculateMACD,
+  calculateSMA,
+  calculateBollingerBands,
+} from '@/utils/technicals';
+import {
+  getRSISignal,
+  getMACDSignal,
+  getSMASignal,
+  getBollingerSignal,
+  calculateAggregateScore,
+} from '@/utils/signals';
 import type { StockQuote } from '@/types';
+import type { AggregateScore } from '@/utils/signals';
 
 // Market Indices (ETFs that Polygon supports)
 const MARKET_INDICES = [
@@ -23,7 +37,7 @@ const MARKET_INDICES = [
   { symbol: 'DIA', name: 'Dow Jones', icon: '\u{1F3DB}\u{FE0F}' }, // 🏛️
   { symbol: 'VGK', name: 'Europe', icon: '\u{1F1EA}\u{1F1FA}' },   // 🇪🇺
   { symbol: 'GLD', name: 'Gold', icon: '\u{1F947}' },              // 🥇
-  { symbol: 'IBIT', name: 'Bitcoin', icon: '\u{20BF}' },           // ₿
+  { symbol: 'USO', name: 'Oil', icon: '\u{1F6E2}\u{FE0F}' },       // 🛢️
 ];
 
 // Default watchlist stocks
@@ -56,14 +70,62 @@ const COMPANY_NAMES: Record<string, string> = {
 /**
  * Format price with appropriate decimal places
  * - Under $1: 3 decimals ($0.823)
- * - Under $10: 2 decimals ($1.23)
- * - $10+: 2 decimals ($278.78)
+ * - $1+: 2 decimals ($278.78)
  */
 function formatPrice(price: number): string {
   if (price < 1) {
     return price.toFixed(3);
   }
   return price.toFixed(2);
+}
+
+/**
+ * Mini Sparkline SVG component
+ */
+function MiniSparkline({
+  data,
+  width = 48,
+  height = 20,
+  isUp = true,
+}: {
+  data: number[];
+  width?: number;
+  height?: number;
+  isUp?: boolean;
+}) {
+  if (data.length < 2) return null;
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+
+  const points = data
+    .map((value, index) => {
+      const x = (index / (data.length - 1)) * width;
+      const y = height - ((value - min) / range) * height;
+      return `${x},${y}`;
+    })
+    .join(' ');
+
+  const color = isUp ? '#10b981' : '#f43f5e';
+
+  return (
+    <svg width={width} height={height} className="flex-shrink-0">
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+interface StockData {
+  sparkline: number[];
+  signalScore?: AggregateScore;
 }
 
 interface HomeViewProps {
@@ -82,6 +144,7 @@ export const HomeView = memo(function HomeView({
   const setQuotesCache = useQuoteCacheStore((s) => s.setQuotes);
 
   const [quotes, setQuotes] = useState<Map<string, StockQuote>>(new Map());
+  const [stockData, setStockData] = useState<Record<string, StockData>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -97,7 +160,6 @@ export const HomeView = memo(function HomeView({
   // Combined watchlist: defaults + user-added stocks from search
   const combinedWatchlist = useMemo(() => {
     const result = [...DEFAULT_WATCHLIST];
-    // Add stocks from watchlistItems that aren't in defaults or indices
     const indicesSymbols = new Set(MARKET_INDICES.map((i) => i.symbol));
     watchlistItems.forEach((item) => {
       if (!defaultWatchlistSymbols.has(item.symbol) && !indicesSymbols.has(item.symbol)) {
@@ -122,18 +184,63 @@ export const HomeView = memo(function HomeView({
     return Array.from(symbols);
   }, [combinedWatchlist, holdingsWithShares]);
 
+  // Load quotes and daily data for sparklines/signals
   const loadData = useCallback(async () => {
     setIsLoading(true);
 
     try {
+      // Fetch quotes
       const result = await marketData.getBulkQuotes(allSymbols);
       setQuotes(result.quotes);
       setLastUpdate(new Date());
 
-      // Update global cache
       if (result.source !== 'unavailable') {
         setQuotesCache(result.quotes, result.source);
       }
+
+      // Fetch daily data for each symbol (for sparklines and signals)
+      const newStockData: Record<string, StockData> = {};
+
+      await Promise.all(
+        allSymbols.map(async (symbol) => {
+          try {
+            const dailyResult = await marketData.getDailyData(symbol, 30);
+            const prices = (dailyResult.data || []).slice(0, 20).map((d) => d.close).reverse();
+
+            let signalScore: AggregateScore | undefined;
+            const quote = result.quotes.get(symbol);
+
+            // Calculate signals if we have enough data
+            if (prices.length >= 20 && quote) {
+              try {
+                const rsi = calculateRSI(prices);
+                const macd = calculateMACD(prices);
+                const sma20 = calculateSMA(prices, 20);
+                const sma50 = prices.length >= 50 ? calculateSMA(prices, 50) : sma20;
+                const bollinger = calculateBollingerBands(prices);
+
+                const signals = [
+                  getRSISignal(rsi),
+                  getMACDSignal(macd.histogram, macd.histogram - macd.signal),
+                  getSMASignal(quote.price, sma20, 20),
+                  getSMASignal(quote.price, sma50, 50),
+                  getBollingerSignal(quote.price, bollinger.upper, bollinger.middle, bollinger.lower),
+                ];
+
+                signalScore = calculateAggregateScore(signals);
+              } catch (e) {
+                console.warn(`Signal calc error for ${symbol}:`, e);
+              }
+            }
+
+            newStockData[symbol] = { sparkline: prices, signalScore };
+          } catch (e) {
+            newStockData[symbol] = { sparkline: [] };
+          }
+        })
+      );
+
+      setStockData(newStockData);
     } catch (err) {
       console.error('[HomeView] Failed to load:', err);
     } finally {
@@ -145,7 +252,7 @@ export const HomeView = memo(function HomeView({
     loadData();
   }, [loadData]);
 
-  // Use cached data on mount
+  // Use cached quotes on mount
   useEffect(() => {
     if (Object.keys(cachedQuotes).length > 0) {
       const map = new Map<string, StockQuote>();
@@ -156,7 +263,7 @@ export const HomeView = memo(function HomeView({
     }
   }, [cachedQuotes]);
 
-  // Portfolio total value
+  // Portfolio calculations
   const totalValue = useMemo(
     () =>
       holdingsWithShares.reduce((sum, h) => {
@@ -166,7 +273,6 @@ export const HomeView = memo(function HomeView({
     [holdingsWithShares, quotes]
   );
 
-  // Portfolio today's change
   const todayChange = useMemo(() => {
     let change = 0;
     holdingsWithShares.forEach((h) => {
@@ -184,9 +290,17 @@ export const HomeView = memo(function HomeView({
     return `${Math.floor(seconds / 60)}m ago`;
   };
 
+  // Get glow class based on signal
+  const getGlowClass = (signalScore?: AggregateScore) => {
+    if (!signalScore) return '';
+    if (signalScore.percentage >= 60) return 'glow-bullish';
+    if (signalScore.percentage <= 40) return 'glow-bearish';
+    return '';
+  };
+
   return (
     <div className="flex flex-col h-full bg-inherit min-h-screen">
-      {/* Header - Compact */}
+      {/* Header */}
       <div className="px-4 pt-4 pb-2">
         <div className="flex justify-between items-center">
           <h1 className="text-xl font-bold text-white">Home</h1>
@@ -210,7 +324,7 @@ export const HomeView = memo(function HomeView({
         </div>
       </div>
 
-      {/* Data Source - Compact */}
+      {/* Data Source */}
       <div className="px-4 pb-2">
         <div
           className={`rounded-lg px-3 py-1.5 text-xs flex justify-between items-center ${
@@ -228,12 +342,13 @@ export const HomeView = memo(function HomeView({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto pb-28">
-        {/* 1. Market Overview - Compact Grid */}
+        {/* 1. Market Overview */}
         <div className="px-4 mb-4">
           <h2 className="text-white font-semibold text-sm mb-2">Market Overview</h2>
           <div className="grid grid-cols-3 gap-1.5">
             {MARKET_INDICES.map((index) => {
               const quote = quotes.get(index.symbol);
+              const data = stockData[index.symbol];
               const isUp = (quote?.change ?? 0) >= 0;
 
               return (
@@ -249,7 +364,12 @@ export const HomeView = memo(function HomeView({
 
                   {quote ? (
                     <>
-                      <p className="text-white font-semibold text-sm">${formatPrice(quote.price)}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-white font-semibold text-sm">${formatPrice(quote.price)}</p>
+                        {data?.sparkline && data.sparkline.length > 1 && (
+                          <MiniSparkline data={data.sparkline} width={32} height={14} isUp={isUp} />
+                        )}
+                      </div>
                       <p className={`text-[10px] ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
                         {isUp ? '\u25B2' : '\u25BC'} {Math.abs(quote.changePercent).toFixed(2)}%
                       </p>
@@ -291,6 +411,7 @@ export const HomeView = memo(function HomeView({
               {holdingsWithShares.map((holding, idx) => {
                 const symbol = holding.symbol.toUpperCase();
                 const quote = quotes.get(symbol);
+                const data = stockData[symbol];
                 const isUp = (quote?.change ?? 0) >= 0;
                 const value = holding.shares * (quote?.price || 0);
                 const dayChange = holding.shares * (quote?.change || 0);
@@ -304,23 +425,19 @@ export const HomeView = memo(function HomeView({
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-white font-medium text-sm w-14">{symbol}</span>
-                      <span className="text-slate-500 text-xs">{holding.shares} shares</span>
+                      <span className="text-white font-medium text-sm w-12">{symbol}</span>
+                      <span className="text-slate-500 text-xs">{holding.shares}</span>
+                      {data?.sparkline && data.sparkline.length > 1 && (
+                        <MiniSparkline data={data.sparkline} width={40} height={16} isUp={isUp} />
+                      )}
                     </div>
 
                     {quote ? (
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <span className="text-white text-sm block">${formatPrice(value)}</span>
-                          <span className={`text-[10px] ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {dayChange >= 0 ? '+' : ''}${dayChange.toFixed(2)}
-                          </span>
-                        </div>
-                        {isUp ? (
-                          <TrendingUp className="w-4 h-4 text-emerald-400" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4 text-rose-400" />
-                        )}
+                      <div className="text-right">
+                        <span className="text-white text-sm block">${formatPrice(value)}</span>
+                        <span className={`text-[10px] ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {dayChange >= 0 ? '+' : ''}${dayChange.toFixed(2)}
+                        </span>
                       </div>
                     ) : (
                       <span className="text-slate-500 text-sm">--</span>
@@ -332,7 +449,7 @@ export const HomeView = memo(function HomeView({
           </div>
         )}
 
-        {/* 3. Watchlist - Combined defaults + user-added */}
+        {/* 3. Watchlist */}
         <div className="px-4 mb-4">
           <div className="flex justify-between items-center mb-2">
             <h2 className="text-white font-semibold text-sm">Watchlist</h2>
@@ -345,21 +462,21 @@ export const HomeView = memo(function HomeView({
               {isEditMode ? 'Done' : 'Edit'}
             </button>
           </div>
-          <div className="bg-slate-800/30 border border-slate-700/50 rounded-xl overflow-hidden">
-            {combinedWatchlist.map((stock, idx) => {
+          <div className="space-y-1.5">
+            {combinedWatchlist.map((stock) => {
               const quote = quotes.get(stock.symbol);
+              const data = stockData[stock.symbol];
               const isUp = (quote?.change ?? 0) >= 0;
               const holding = holdings[stock.symbol];
               const isUserAdded = !defaultWatchlistSymbols.has(stock.symbol);
+              const glowClass = getGlowClass(data?.signalScore);
 
               return (
                 <div
                   key={stock.symbol}
-                  className={`flex items-center px-3 py-2 ${
-                    idx < combinedWatchlist.length - 1 ? 'border-b border-slate-700/30' : ''
-                  }`}
+                  className={`flex items-center px-3 py-2 bg-slate-800/30 border border-slate-700/50 rounded-xl ${glowClass}`}
                 >
-                  {/* Remove Button in Edit Mode (only for user-added stocks) */}
+                  {/* Remove Button */}
                   {isEditMode && isUserAdded && (
                     <button
                       onClick={(e) => {
@@ -377,25 +494,51 @@ export const HomeView = memo(function HomeView({
                     onClick={() => onSelectStock(stock.symbol)}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-white font-medium text-sm w-14">{stock.symbol}</span>
-                      <span className="text-slate-400 text-xs">{stock.name}</span>
-                      {holding?.shares > 0 && (
-                        <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">
-                          {holding.shares}
-                        </span>
-                      )}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-medium text-sm">{stock.symbol}</span>
+                          {holding?.shares > 0 && (
+                            <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">
+                              {holding.shares}
+                            </span>
+                          )}
+                          {/* Signal Badge */}
+                          {data?.signalScore && (
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                data.signalScore.sentiment === 'bullish'
+                                  ? 'bg-emerald-500/20 text-emerald-400'
+                                  : data.signalScore.sentiment === 'bearish'
+                                  ? 'bg-rose-500/20 text-rose-400'
+                                  : 'bg-amber-500/20 text-amber-400'
+                              }`}
+                            >
+                              {data.signalScore.label}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-slate-400 text-xs">{stock.name}</span>
+                      </div>
                     </div>
 
-                    {quote ? (
-                      <div className="flex items-center gap-3">
-                        <span className="text-white text-sm">${formatPrice(quote.price)}</span>
-                        <span className={`text-xs w-16 text-right ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {isUp ? '+' : ''}{quote.changePercent.toFixed(2)}%
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-slate-500 text-sm">--</span>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {/* Sparkline */}
+                      {data?.sparkline && data.sparkline.length > 1 && (
+                        <MiniSparkline data={data.sparkline} width={48} height={20} isUp={isUp} />
+                      )}
+
+                      {/* Price & Change */}
+                      {quote ? (
+                        <div className="text-right min-w-[70px]">
+                          <span className="text-white text-sm block">${formatPrice(quote.price)}</span>
+                          <span className={`text-[10px] ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {isUp ? '+' : ''}{quote.changePercent.toFixed(2)}%
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500 text-sm">--</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
