@@ -14,3 +14,5 @@ export type { AIInsightsPanelProps } from './AIInsightsPanel';
 export { NewsPanel } from './NewsPanel';
 export { TechnicalSignalsPanel } from './TechnicalSignalsPanel';
 export { IndicatorTooltip } from './IndicatorTooltip';
+export { AIPowerBar, AIStatusRow } from './AIPowerBar';
+export type { AIPowerBarProps, AIStatus, AISource, AIStatusRowProps } from './AIPowerBar';

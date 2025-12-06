@@ -2,14 +2,13 @@
  * NewsCarousel - Horizontal scrolling news headlines
  *
  * Displays top business news in a carousel format.
- * Tries Finnhub first (FREE), then falls back to NewsAPI.
+ * Uses Finnhub for real-time market news (FREE API).
  */
 
 import { useState, useEffect, memo } from 'react';
 import { Newspaper, ExternalLink, TrendingUp } from 'lucide-react';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { getMarketNews, type FinnhubNews } from '@/services/api/finnhub';
-import { getTopBusinessNews } from '@/services/api/newsapi';
 
 interface DisplayNews {
   id: string | number;
@@ -60,17 +59,16 @@ const MOCK_NEWS: DisplayNews[] = [
 export const NewsCarousel = memo(function NewsCarousel() {
   const [news, setNews] = useState<DisplayNews[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [source, setSource] = useState<'finnhub' | 'newsapi' | 'mock'>('mock');
+  const [source, setSource] = useState<'finnhub' | 'mock'>('mock');
 
   const { getApiKey } = useApiKeysStore();
   const finnhubKey = getApiKey('finnhub');
-  const newsApiKey = getApiKey('newsapi');
 
   useEffect(() => {
     async function fetchNews() {
       setIsLoading(true);
 
-      // Try Finnhub first (FREE - 60 calls/min)
+      // Try Finnhub (FREE - 60 calls/min)
       if (finnhubKey) {
         try {
           const articles = await getMarketNews(finnhubKey);
@@ -93,29 +91,7 @@ export const NewsCarousel = memo(function NewsCarousel() {
         }
       }
 
-      // Fallback to NewsAPI
-      if (newsApiKey) {
-        try {
-          const articles = await getTopBusinessNews(newsApiKey);
-          if (articles.length > 0) {
-            setNews(articles.map((a) => ({
-              id: a.title,
-              headline: a.title,
-              source: a.source.name,
-              url: a.url,
-              datetime: new Date(a.publishedAt).getTime() / 1000,
-              sentiment: a.sentiment,
-            })));
-            setSource('newsapi');
-            setIsLoading(false);
-            return;
-          }
-        } catch (err) {
-          console.error('NewsAPI error:', err);
-        }
-      }
-
-      // Use mock news
+      // Use mock news as fallback
       setNews(MOCK_NEWS);
       setSource('mock');
       setIsLoading(false);
@@ -126,7 +102,7 @@ export const NewsCarousel = memo(function NewsCarousel() {
     // Refresh every 5 minutes
     const interval = setInterval(fetchNews, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [finnhubKey, newsApiKey]);
+  }, [finnhubKey]);
 
   const getSentimentColor = (sentiment?: string) => {
     switch (sentiment) {
@@ -146,8 +122,8 @@ export const NewsCarousel = memo(function NewsCarousel() {
     return `${Math.floor(hours / 24)}d ago`;
   };
 
-  // No API keys - show hint
-  if (!finnhubKey && !newsApiKey && !isLoading) {
+  // No Finnhub key - show hint
+  if (!finnhubKey && !isLoading) {
     return (
       <div className="px-5 py-4">
         <div className="bg-slate-800/50 rounded-xl p-4 flex items-center gap-3">
@@ -193,7 +169,7 @@ export const NewsCarousel = memo(function NewsCarousel() {
           <h2 className="text-slate-400 font-medium text-sm">Market News</h2>
         </div>
         <span className="text-slate-600 text-xs">
-          {source === 'finnhub' ? 'via Finnhub' : source === 'newsapi' ? 'via NewsAPI' : 'Demo'}
+          {source === 'finnhub' ? 'via Finnhub' : 'Demo'}
         </span>
       </div>
 

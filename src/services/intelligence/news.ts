@@ -1,72 +1,110 @@
 /**
  * News Intelligence Service
  *
- * Fetches and analyzes news sentiment from Finnhub.
- * Uses Finnhub API (no CORS issues, works in browser).
+ * Fetches and analyzes news sentiment using OpenAI.
+ * Uses GPT-4o-mini for fast, cost-efficient news analysis.
  */
 
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
-import { getCompanyNews, type FinnhubNews } from '@/services/api/finnhub';
+import { getOpenAINewsAnalysis } from '@/services/ai/openai';
 import type { NewsReport, NewsReportData, NewsHeadline } from '@/types/intelligence';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPANY NAME MAPPING
+// ═══════════════════════════════════════════════════════════════════════════
+
+const companyNames: Record<string, string> = {
+  AAPL: 'Apple',
+  MSFT: 'Microsoft',
+  GOOGL: 'Google Alphabet',
+  AMZN: 'Amazon',
+  NVDA: 'NVIDIA',
+  META: 'Meta Facebook',
+  TSLA: 'Tesla',
+  'BRK.B': 'Berkshire Hathaway',
+  JPM: 'JPMorgan Chase',
+  V: 'Visa',
+  JNJ: 'Johnson & Johnson',
+  WMT: 'Walmart',
+  AMD: 'AMD Advanced Micro Devices',
+  INTC: 'Intel',
+  NFLX: 'Netflix',
+  DIS: 'Disney',
+  CRM: 'Salesforce',
+  PYPL: 'PayPal',
+  SPY: 'S&P 500 ETF',
+  QQQ: 'NASDAQ-100 ETF',
+};
+
+function getCompanyName(symbol: string): string {
+  return companyNames[symbol] || symbol;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN GATHER FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Gather news intelligence from Finnhub
+ * Gather news intelligence using OpenAI
  *
  * @param symbol - Stock symbol
- * @param companyName - Optional company name (not used by Finnhub)
+ * @param companyName - Optional company name
  * @returns News intelligence report or null if unavailable
  */
 export async function gatherNewsIntelligence(
   symbol: string,
-  _companyName?: string
+  companyName?: string
 ): Promise<NewsReport | null> {
   try {
-    // Use Finnhub API key (no CORS issues)
-    const apiKey = useApiKeysStore.getState().getApiKey('finnhub');
+    // Use OpenAI API key
+    const apiKey = useApiKeysStore.getState().getApiKey('openai');
 
     if (!apiKey) {
-      console.warn('[News] No Finnhub API key configured');
+      console.warn('[News] No OpenAI API key configured');
       return null;
     }
 
-    // Fetch news from Finnhub
-    const articles = await getCompanyNews(symbol, apiKey);
+    const company = companyName || getCompanyName(symbol);
 
-    if (!articles || articles.length === 0) {
-      console.warn(`[News] No news found for ${symbol}`);
+    // Fetch news analysis from OpenAI
+    const result = await getOpenAINewsAnalysis(symbol, company, apiKey);
+
+    if (!result) {
+      console.warn(`[News] No news analysis available for ${symbol}`);
       return createEmptyReport(symbol);
     }
 
-    // Process headlines from Finnhub format
-    const headlines = processFinnhubHeadlines(articles);
+    // Convert OpenAI result to headlines format
+    const headlines: NewsHeadline[] = result.headlines.map((h) => ({
+      title: h.title,
+      source: h.source || 'OpenAI',
+      url: '',
+      publishedAt: result.timestamp,
+      sentiment: h.sentiment,
+      relevance: 0.9,
+    }));
 
-    // Calculate overall sentiment from Finnhub articles
-    const sentimentResult = calculateFinnhubSentiment(articles);
+    // Map sentiment
     const overallSentiment: NewsReportData['overallSentiment'] =
-      sentimentResult.label === 'bullish'
+      result.overallSentiment === 'bullish'
         ? 'bullish'
-        : sentimentResult.label === 'bearish'
+        : result.overallSentiment === 'bearish'
         ? 'bearish'
         : 'neutral';
-
-    // Get top sources
-    const topSources = getTopSources(headlines);
 
     // Build report data
     const data: NewsReportData = {
       headlines,
       overallSentiment,
-      sentimentScore: sentimentResult.score,
+      sentimentScore: result.sentimentScore,
       articleCount: headlines.length,
-      topSources,
+      topSources: ['OpenAI Analysis'],
+      keyTopics: result.keyTopics,
+      marketImpact: result.marketImpact,
     };
 
     // Generate summary
-    const summary = generateNewsSummary(symbol, data, sentimentResult.breakdown);
+    const summary = generateNewsSummary(symbol, data, result);
 
     return {
       source: 'news-sentiment',
@@ -82,71 +120,15 @@ export async function gatherNewsIntelligence(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PROCESSING FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-function processFinnhubHeadlines(articles: FinnhubNews[]): NewsHeadline[] {
-  return articles
-    .slice(0, 10) // Take top 10 most recent
-    .map((article) => ({
-      title: article.headline,
-      source: article.source,
-      url: article.url,
-      publishedAt: new Date(article.datetime * 1000).toISOString(),
-      sentiment: article.sentiment || 'neutral',
-      relevance: 0.8,
-    }));
-}
-
-function calculateFinnhubSentiment(articles: FinnhubNews[]): {
-  score: number;
-  label: 'bullish' | 'neutral' | 'bearish';
-  breakdown: { positive: number; neutral: number; negative: number };
-} {
-  if (articles.length === 0) {
-    return { score: 0, label: 'neutral', breakdown: { positive: 0, neutral: 0, negative: 0 } };
-  }
-
-  const breakdown = {
-    positive: articles.filter((a) => a.sentiment === 'positive').length,
-    neutral: articles.filter((a) => a.sentiment === 'neutral').length,
-    negative: articles.filter((a) => a.sentiment === 'negative').length,
-  };
-
-  const score = (breakdown.positive - breakdown.negative) / articles.length;
-
-  return {
-    score,
-    label: score > 0.2 ? 'bullish' : score < -0.2 ? 'bearish' : 'neutral',
-    breakdown,
-  };
-}
-
-function getTopSources(headlines: NewsHeadline[]): string[] {
-  const sourceCounts = headlines.reduce((acc, h) => {
-    acc[h.source] = (acc[h.source] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  return Object.entries(sourceCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([source]) => source);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // SUMMARY & CONFIDENCE
 // ═══════════════════════════════════════════════════════════════════════════
 
 function generateNewsSummary(
   symbol: string,
   data: NewsReportData,
-  breakdown: { positive: number; neutral: number; negative: number }
+  result: { keyTopics?: string[]; marketImpact?: string }
 ): string {
   const parts: string[] = [];
-
-  // Article count
-  parts.push(`Found ${data.articleCount} news articles for ${symbol}.`);
 
   // Overall sentiment
   const sentimentDesc =
@@ -155,36 +137,34 @@ function generateNewsSummary(
       : data.overallSentiment === 'bearish'
       ? 'negative'
       : 'mixed';
-  parts.push(`Overall news sentiment is ${sentimentDesc}.`);
+  parts.push(`OpenAI analyzed recent news for ${symbol}. Overall sentiment is ${sentimentDesc}.`);
 
-  // Sentiment breakdown
-  if (breakdown.positive > 0 || breakdown.negative > 0) {
-    parts.push(
-      `Breakdown: ${breakdown.positive} positive, ${breakdown.neutral} neutral, ${breakdown.negative} negative.`
-    );
+  // Key topics
+  if (result.keyTopics && result.keyTopics.length > 0) {
+    parts.push(`Key topics: ${result.keyTopics.slice(0, 3).join(', ')}.`);
   }
 
-  // Top sources
-  if (data.topSources.length > 0) {
-    parts.push(`Key sources: ${data.topSources.join(', ')}.`);
+  // Market impact
+  if (result.marketImpact) {
+    parts.push(`Impact: ${result.marketImpact}`);
   }
 
   return parts.join(' ');
 }
 
 function calculateNewsConfidence(data: NewsReportData): number {
-  let confidence = 50;
+  let confidence = 60; // Base confidence for AI analysis
 
-  // More articles = more confidence
-  if (data.articleCount >= 10) confidence += 20;
-  else if (data.articleCount >= 5) confidence += 15;
-  else if (data.articleCount >= 2) confidence += 8;
+  // More headlines = more confidence
+  if (data.articleCount >= 5) confidence += 15;
+  else if (data.articleCount >= 3) confidence += 10;
+  else if (data.articleCount >= 1) confidence += 5;
 
-  // Strong sentiment agreement
+  // Strong sentiment = more confidence
   const sentimentStrength = Math.abs(data.sentimentScore);
-  confidence += sentimentStrength * 15;
+  confidence += sentimentStrength * 10;
 
-  return Math.min(95, Math.round(confidence));
+  return Math.min(90, Math.round(confidence));
 }
 
 function createEmptyReport(symbol: string): NewsReport {
@@ -199,6 +179,6 @@ function createEmptyReport(symbol: string): NewsReport {
       articleCount: 0,
       topSources: [],
     },
-    summary: `No recent news articles found for ${symbol}.`,
+    summary: `No recent news available for ${symbol}.`,
   };
 }
