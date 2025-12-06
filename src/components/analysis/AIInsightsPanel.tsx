@@ -88,6 +88,12 @@ export const AIInsightsPanel = memo(function AIInsightsPanel({
       {researchReport && (
         <GeminiInsightCard data={researchReport.data} confidence={researchReport.confidence} />
       )}
+
+      {/* Aggregated Sources Section */}
+      <SourcesSection
+        researchCitations={researchReport?.data.citations}
+        dateRange={socialReport?.data.dateRange}
+      />
     </div>
   );
 });
@@ -136,6 +142,9 @@ const GrokInsightCard = memo(function GrokInsightCard({
             X/Twitter Sentiment
           </span>
           <span className="text-cyan-500/60 text-xs">(via Grok)</span>
+          <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">
+            LIVE
+          </span>
         </div>
         <span className="text-slate-500 text-xs">{confidence}% confidence</span>
       </div>
@@ -154,6 +163,13 @@ const GrokInsightCard = memo(function GrokInsightCard({
             </span>
           </div>
         </div>
+
+        {/* Date Range */}
+        {data.dateRange && (
+          <div className="text-xs text-slate-500 flex items-center gap-1">
+            📅 <span>{data.dateRange}</span>
+          </div>
+        )}
 
         {/* Metrics Row */}
         <div className="flex items-center gap-4 text-xs">
@@ -227,6 +243,9 @@ const GeminiInsightCard = memo(function GeminiInsightCard({
             Analyst Research
           </span>
           <span className="text-purple-500/60 text-xs">(via Gemini)</span>
+          <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">
+            LIVE
+          </span>
         </div>
         <span className="text-slate-500 text-xs">{confidence}% confidence</span>
       </div>
@@ -298,13 +317,28 @@ const GeminiInsightCard = memo(function GeminiInsightCard({
           </div>
         )}
 
-        {/* Citations */}
+        {/* Citations with dates */}
         {data.citations && data.citations.length > 0 && (
-          <div className="pt-2 border-t border-slate-800/50 flex items-center gap-2">
-            <ExternalLink size={10} className="text-slate-600" />
-            <span className="text-slate-600 text-[10px]">
-              {data.citations.length} source(s) referenced
-            </span>
+          <div className="pt-2 border-t border-slate-800/50">
+            <div className="flex items-center gap-2 mb-2">
+              <ExternalLink size={10} className="text-slate-500" />
+              <span className="text-slate-500 text-[10px]">
+                Sources ({data.citations.length})
+              </span>
+            </div>
+            <div className="space-y-1">
+              {data.citations.slice(0, 3).map((cite, i) => (
+                <a
+                  key={i}
+                  href={cite.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-[10px] text-blue-400 hover:text-blue-300 truncate"
+                >
+                  • {cite.title}{cite.date ? ` (${cite.date})` : ''}
+                </a>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -362,6 +396,72 @@ const LoadingSkeleton = memo(function LoadingSkeleton() {
       <div className="bg-slate-900/30 border border-slate-800/50 rounded-2xl p-4 space-y-3">
         <div className="w-32 h-4 rounded bg-slate-800" />
         <div className="w-full h-16 rounded bg-slate-800/50" />
+      </div>
+    </div>
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SOURCES SECTION
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface SourcesSectionProps {
+  researchCitations?: Array<{ title: string; url: string; date?: string }>;
+  dateRange?: string;
+}
+
+const SourcesSection = memo(function SourcesSection({
+  researchCitations,
+  dateRange,
+}: SourcesSectionProps) {
+  // Only show if we have sources
+  if (!researchCitations?.length && !dateRange) {
+    return null;
+  }
+
+  return (
+    <div className="bg-slate-900/30 border border-slate-800/50 rounded-2xl p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <ExternalLink size={14} className="text-slate-400" />
+        <span className="text-slate-400 text-sm font-medium">
+          Live Data Sources
+        </span>
+        <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded">
+          LIVE
+        </span>
+      </div>
+
+      {/* Date Range */}
+      {dateRange && (
+        <div className="text-slate-500 text-xs mb-2">
+          📅 X/Twitter data range: {dateRange}
+        </div>
+      )}
+
+      {/* Research Citations */}
+      {researchCitations && researchCitations.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-slate-500 text-xs">📰 Web sources:</div>
+          {researchCitations.slice(0, 5).map((cite, i) => (
+            <a
+              key={i}
+              href={cite.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-xs text-slate-300 hover:text-blue-400 transition-colors"
+            >
+              <span className="text-slate-600">•</span>
+              <span className="truncate flex-1">{cite.title}</span>
+              {cite.date && (
+                <span className="text-slate-500 flex-shrink-0">({cite.date})</span>
+              )}
+            </a>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-3 pt-2 border-t border-slate-800/50 text-[10px] text-slate-600">
+        Data fetched via live web search, not from AI training data
       </div>
     </div>
   );

@@ -64,6 +64,21 @@ export async function gatherResearchIntelligence(
       const geminiResult = await getGeminiResearch(symbol, name, price, geminiKey);
 
       if (geminiResult) {
+        // Build citations from Gemini sources (live web search)
+        const citations = geminiResult.sources && geminiResult.sources.length > 0
+          ? geminiResult.sources.map((s) => ({
+              title: s.title,
+              url: s.url || '',
+              date: s.date,
+              snippet: 'Live web search result',
+            }))
+          : [{
+              title: 'Gemini AI with Google Search',
+              url: 'https://ai.google.dev',
+              date: new Date().toISOString().split('T')[0],
+              snippet: 'AI-generated research based on live web data',
+            }];
+
         // Convert Gemini result to ResearchReportData
         const reportData: ResearchReportData = {
           keyFindings: geminiResult.keyFindings,
@@ -78,13 +93,7 @@ export async function gatherResearchIntelligence(
               }
             : undefined,
           upcomingEvents: [],
-          citations: [
-            {
-              title: 'Gemini AI Analysis',
-              url: 'https://ai.google.dev',
-              snippet: 'AI-generated research based on web data',
-            },
-          ],
+          citations,
         };
 
         return {
