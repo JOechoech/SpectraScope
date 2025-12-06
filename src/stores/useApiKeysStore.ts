@@ -1,12 +1,13 @@
 /**
- * API Keys Store v2 - Simplified, No Alpha Vantage
+ * API Keys Store - Persistent API Key Storage
  *
  * Stores API keys for various services using Zustand persist middleware.
- * Keys are encoded (not encrypted) in localStorage.
+ * Keys are encoded (not encrypted) in localStorage with backup storage
+ * to prevent data loss.
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { useState, useEffect } from 'react';
 import type { ApiKeys, AiProvider } from '@/types';
 
@@ -25,6 +26,27 @@ const decode = (str: string): string => {
   }
 };
 
+// Backup key storage helpers - redundant storage for reliability
+const backupKey = (provider: string, key: string) => {
+  try {
+    localStorage.setItem(`spectrascope-backup-${provider}`, encode(key));
+  } catch {
+    // Silent fail - backup is optional
+  }
+};
+
+const getBackupKey = (provider: string): string | null => {
+  try {
+    const encoded = localStorage.getItem(`spectrascope-backup-${provider}`);
+    if (encoded) {
+      return decode(encoded);
+    }
+  } catch {
+    // Silent fail
+  }
+  return null;
+};
+
 interface ApiKeysState {
   encodedKeys: Partial<Record<keyof ApiKeys, string>>;
   defaultAiProvider: AiProvider;
@@ -39,7 +61,7 @@ interface ApiKeysState {
   clearAllKeys: () => void;
 }
 
-// Validation patterns (NO alphavantage)
+// Validation patterns
 const keyPatterns: Partial<Record<keyof ApiKeys, RegExp>> = {
   polygon: /^[a-zA-Z0-9_]{20,}$/,
   finnhub: /^[a-z0-9]{15,}$/,
@@ -67,9 +89,6 @@ export const onHydrationComplete = (callback: () => void) => {
 
 export const getIsHydrated = () => isHydrated;
 
-// STORE VERSION - bump to force fresh localStorage
-const STORE_VERSION = 2;
-
 export const useApiKeysStore = create<ApiKeysState>()(
   persist(
     (set, get) => ({
@@ -82,27 +101,54 @@ export const useApiKeysStore = create<ApiKeysState>()(
           get().removeApiKey(provider);
           return;
         }
+        const trimmedKey = key.trim();
+        // Store in main state
         set((state) => ({
           encodedKeys: {
             ...state.encodedKeys,
-            [provider]: encode(key.trim()),
+            [provider]: encode(trimmedKey),
           },
         }));
+        // Also backup to separate localStorage key for reliability
+        backupKey(provider, trimmedKey);
       },
 
       getApiKey: (provider) => {
         const encoded = get().encodedKeys[provider];
-        if (!encoded) return null;
-        const decoded = decode(encoded);
-        return decoded && decoded.length > 0 ? decoded : null;
+        if (encoded) {
+          const decoded = decode(encoded);
+          if (decoded && decoded.length > 0) {
+            return decoded;
+          }
+        }
+        // Try backup if main store doesn't have it
+        const backup = getBackupKey(provider);
+        if (backup) {
+          // Restore to main store
+          set((state) => ({
+            encodedKeys: {
+              ...state.encodedKeys,
+              [provider]: encode(backup),
+            },
+          }));
+          return backup;
+        }
+        return null;
       },
 
-      removeApiKey: (provider) =>
+      removeApiKey: (provider) => {
         set((state) => {
           const newKeys = { ...state.encodedKeys };
           delete newKeys[provider];
           return { encodedKeys: newKeys };
-        }),
+        });
+        // Also remove backup
+        try {
+          localStorage.removeItem(`spectrascope-backup-${provider}`);
+        } catch {
+          // Silent fail
+        }
+      },
 
       hasApiKey: (provider) => {
         const key = get().getApiKey(provider);
@@ -130,36 +176,37 @@ export const useApiKeysStore = create<ApiKeysState>()(
       clearAllKeys: () => set({ encodedKeys: {} }),
     }),
     {
-      name: 'spectrascope-api-keys-v2',
-      version: STORE_VERSION,
+      name: 'spectrascope-api-keys',
+      storage: createJSONStorage(() => localStorage),
+      // NO version number - don't break existing storage!
       partialize: (state) => ({
         encodedKeys: state.encodedKeys,
         defaultAiProvider: state.defaultAiProvider,
       }),
       onRehydrateStorage: () => {
         return (state) => {
-          // Clean up any empty or invalid keys on rehydration
-          if (state?.encodedKeys) {
-            const cleanedKeys: Partial<Record<keyof ApiKeys, string>> = {};
-            for (const [key, value] of Object.entries(state.encodedKeys)) {
-              if (value && decode(value).length > 0) {
-                cleanedKeys[key as keyof ApiKeys] = value;
+          // Recover keys from backup if main store is empty
+          if (state) {
+            const providers: (keyof ApiKeys)[] = [
+              'polygon', 'finnhub', 'anthropic', 'openai',
+              'grok', 'gemini', 'perplexity', 'newsapi', 'mediastack'
+            ];
+
+            providers.forEach((provider) => {
+              const hasKey = state.encodedKeys[provider] && decode(state.encodedKeys[provider] || '').length > 0;
+              if (!hasKey) {
+                const backup = getBackupKey(provider);
+                if (backup) {
+                  state.encodedKeys[provider] = encode(backup);
+                }
               }
-            }
-            state.encodedKeys = cleanedKeys;
+            });
           }
+
           isHydrated = true;
           hydrationListeners.forEach((cb) => cb());
           hydrationListeners.clear();
         };
-      },
-      migrate: (persistedState: unknown, version: number) => {
-        // Force fresh start on version bump
-        if (version < STORE_VERSION) {
-          console.log('[ApiKeys] Migrating from version', version, 'to', STORE_VERSION);
-          return { encodedKeys: {}, defaultAiProvider: 'anthropic' };
-        }
-        return persistedState as ApiKeysState;
       },
     }
   )

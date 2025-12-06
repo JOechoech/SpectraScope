@@ -11,33 +11,31 @@ import type { ViewName } from '@/types';
 export default function App() {
   const [view, setView] = useState<ViewName>('watchlist');
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const [showPortfolio, setShowPortfolio] = useState(false);
+  const [previousView, setPreviousView] = useState<ViewName>('watchlist');
 
   const handleSelectStock = useCallback((symbol: string) => {
+    setPreviousView(view);
     setSelectedSymbol(symbol);
-    setShowPortfolio(false);
     setView('detail');
-  }, []);
+  }, [view]);
 
   const handleBack = useCallback(() => {
-    setShowPortfolio(false);
-    setView('watchlist');
+    setView(previousView);
     setSelectedSymbol(null);
-  }, []);
+  }, [previousView]);
 
   const handleOpenSettings = useCallback(() => {
     setView('settings');
   }, []);
 
   const handleOpenPortfolio = useCallback(() => {
-    setShowPortfolio(true);
+    setView('portfolio');
   }, []);
 
   const handleNavigate = useCallback((newView: ViewName) => {
     if (newView !== 'detail') {
       setSelectedSymbol(null);
     }
-    setShowPortfolio(false);
     setView(newView);
   }, []);
 
@@ -76,18 +74,18 @@ export default function App() {
       `}</style>
 
       {/* Views */}
-      {showPortfolio && (
-        <PortfolioView
-          onBack={() => setShowPortfolio(false)}
-          onSelectStock={handleSelectStock}
-        />
-      )}
-
-      {!showPortfolio && view === 'watchlist' && (
+      {view === 'watchlist' && (
         <WatchlistView
           onSelectStock={handleSelectStock}
           onOpenSettings={handleOpenSettings}
           onOpenPortfolio={handleOpenPortfolio}
+        />
+      )}
+
+      {view === 'portfolio' && (
+        <PortfolioView
+          onBack={() => setView('watchlist')}
+          onSelectStock={handleSelectStock}
         />
       )}
 
@@ -107,7 +105,7 @@ export default function App() {
       )}
 
       {/* Fixed Bottom - Status + Nav combined */}
-      {view !== 'detail' && !showPortfolio && (
+      {view !== 'detail' && (
         <div className="fixed bottom-0 left-0 right-0 z-50 bg-black">
           {view !== 'settings' && <MarketStatusBar />}
           <Navigation currentView={view} onNavigate={handleNavigate} />
