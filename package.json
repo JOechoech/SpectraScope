@@ -1,6 +1,6 @@
 {
   "name": "spectrascope",
-  "version": "1.110.0",
+  "version": "1.111.0",
   "description": "AI-Powered Investment Analysis App",
   "type": "module",
   "scripts": {
