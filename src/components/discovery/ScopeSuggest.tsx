@@ -8,10 +8,39 @@
  * - Quick "Add to Watchlist" & "Deep Analyze All" functionality
  */
 
-import { useState, memo, useCallback } from 'react';
-import { Telescope, Plus, Check, Sparkles, Zap, Loader2, ListPlus, Search, Clock } from 'lucide-react';
+import { useState, memo, useCallback, useEffect } from 'react';
+import { Telescope, Plus, Check, Sparkles, Zap, Loader2, ListPlus, Clock, RefreshCw } from 'lucide-react';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
+
+// Persisted scan result interface
+interface PersistedScanData {
+  results: ScanResult[];
+  timestamp: string;
+  scanType: 'full' | 'grok';
+  sectorId: string;
+}
+
+// Storage helpers
+const STORAGE_KEY_PREFIX = 'spectrascope-scan-';
+
+function loadPersistedScan(sectorId: string): PersistedScanData | null {
+  try {
+    const data = localStorage.getItem(`${STORAGE_KEY_PREFIX}${sectorId}`);
+    if (!data) return null;
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedScan(data: PersistedScanData): void {
+  try {
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${data.sectorId}`, JSON.stringify(data));
+  } catch (e) {
+    console.error('Failed to persist scan results:', e);
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -193,18 +222,41 @@ export const ScopeSuggest = memo(function ScopeSuggest({
   const grokKey = getApiKey('grok');
   const hasAllKeys = getApiKey('anthropic') && getApiKey('openai') && getApiKey('gemini') && grokKey;
 
+  // Load persisted scan results when sector changes
+  useEffect(() => {
+    if (selectedSector) {
+      const persisted = loadPersistedScan(selectedSector);
+      if (persisted) {
+        setScanResults(persisted.results);
+        setScanTimestamp(new Date(persisted.timestamp));
+        setScanMode(persisted.scanType);
+      } else {
+        // No persisted data for this sector
+        setScanResults([]);
+        setScanMode(null);
+        setScanTimestamp(null);
+      }
+    }
+  }, [selectedSector]);
+
   const isInWatchlist = (symbol: string) =>
     watchlistItems.some((item) => item.symbol === symbol);
 
-  const handleAddToWatchlist = (stock: SectorStock) => {
-    if (!isInWatchlist(stock.symbol)) {
-      addStock({
-        symbol: stock.symbol,
-        name: stock.name,
-        price: 0,
-        change: 0,
-        changePercent: 0,
-      });
+  const handleAddToWatchlist = (stock: { symbol: string; name: string }) => {
+    if (!isInWatchlist(stock.symbol) && selectedSector) {
+      addStock(
+        {
+          symbol: stock.symbol,
+          name: stock.name,
+          price: 0,
+          change: 0,
+          changePercent: 0,
+        },
+        {
+          scopedFrom: selectedSector,
+          scopedPrice: 0, // Will be fetched when quote loads
+        }
+      );
       setRecentlyAdded((prev) => [...prev, stock.symbol]);
       setTimeout(() => {
         setRecentlyAdded((prev) => prev.filter((s) => s !== stock.symbol));
@@ -214,14 +266,20 @@ export const ScopeSuggest = memo(function ScopeSuggest({
 
   const handleAddAllToWatchlist = () => {
     scanResults.forEach((result) => {
-      if (!isInWatchlist(result.symbol)) {
-        addStock({
-          symbol: result.symbol,
-          name: result.name,
-          price: 0,
-          change: 0,
-          changePercent: 0,
-        });
+      if (!isInWatchlist(result.symbol) && selectedSector) {
+        addStock(
+          {
+            symbol: result.symbol,
+            name: result.name,
+            price: 0,
+            change: 0,
+            changePercent: 0,
+          },
+          {
+            scopedFrom: selectedSector,
+            scopedPrice: 0,
+          }
+        );
       }
     });
     setRecentlyAdded(scanResults.map((r) => r.symbol));
@@ -292,8 +350,17 @@ Only return valid JSON.`,
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          setScanResults(parsed.results || []);
-          setScanTimestamp(new Date());
+          const results = parsed.results || [];
+          const timestamp = new Date();
+          setScanResults(results);
+          setScanTimestamp(timestamp);
+          // Persist results
+          savePersistedScan({
+            results,
+            timestamp: timestamp.toISOString(),
+            scanType: 'grok',
+            sectorId: selectedSector,
+          });
         }
       }
     } catch (err) {
@@ -368,8 +435,17 @@ Only return valid JSON.`,
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          setScanResults(parsed.results || []);
-          setScanTimestamp(new Date());
+          const results = parsed.results || [];
+          const timestamp = new Date();
+          setScanResults(results);
+          setScanTimestamp(timestamp);
+          // Persist results
+          savePersistedScan({
+            results,
+            timestamp: timestamp.toISOString(),
+            scanType: 'full',
+            sectorId: selectedSector,
+          });
         }
       }
     } catch (err) {
@@ -457,15 +533,19 @@ Only return valid JSON.`,
       </div>
 
       {/* Sector Buttons */}
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+      <div className="flex gap-2 overflow-x-auto pb-3 pt-1 px-1 -mx-1 scrollbar-hide">
         {SECTORS.map((sector) => (
           <button
             key={sector.id}
             onClick={() => {
-              setSelectedSector(selectedSector === sector.id ? null : sector.id);
-              setScanResults([]);
-              setScanMode(null);
-              setScanTimestamp(null);
+              const newSector = selectedSector === sector.id ? null : sector.id;
+              setSelectedSector(newSector);
+              // Clear results when deselecting, let useEffect load persisted data when selecting
+              if (!newSector) {
+                setScanResults([]);
+                setScanMode(null);
+                setScanTimestamp(null);
+              }
             }}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl whitespace-nowrap transition-all ${
               selectedSector === sector.id
@@ -510,7 +590,14 @@ Only return valid JSON.`,
                   - Results from {scanMode === 'grok' ? 'Grok' : 'Full AI'}
                 </span>
               </div>
-              <Search size={14} className="text-purple-400" />
+              <button
+                onClick={() => scanMode && handleScan(scanMode)}
+                disabled={isScanning}
+                className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700/50 text-slate-400 hover:text-purple-400 transition-colors disabled:opacity-50"
+                title="Refresh scan"
+              >
+                <RefreshCw size={14} className={isScanning ? 'animate-spin' : ''} />
+              </button>
             </div>
             {scanTimestamp && (
               <div className="flex items-center gap-1 mt-1 text-slate-500">

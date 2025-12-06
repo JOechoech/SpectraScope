@@ -405,6 +405,9 @@ export const WatchlistView = memo(function WatchlistView({
               changePercent={data.quote.changePercent ?? 0}
               sparklineData={data.sparkline}
               signalScore={data.signalScore}
+              scopedFrom={watchlistItem?.scopedFrom}
+              scopedAt={watchlistItem?.scopedAt}
+              scopedPrice={watchlistItem?.scopedPrice}
               onClick={() => onSelectStock(symbol)}
             />
           );

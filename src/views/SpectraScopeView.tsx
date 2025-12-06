@@ -38,25 +38,25 @@ export const SpectraScopeView = memo(function SpectraScopeView({
       {/* Tips Section */}
       <div className="px-5 mt-4">
         <div className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4">
-          <h3 className="text-white font-medium mb-2">How to use</h3>
-          <ul className="text-slate-400 text-sm space-y-2">
-            <li className="flex items-start gap-2">
-              <span className="text-purple-400">1.</span>
-              Select a sector to explore
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-purple-400">2.</span>
-              Choose a scan mode:
-              <ul className="ml-4 mt-1 space-y-1 text-xs text-slate-500">
-                <li>- Full AI Scan uses all AIs for comprehensive analysis</li>
-                <li>- Grok Social scans X/Twitter for trending sentiment</li>
-              </ul>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-purple-400">3.</span>
-              Add results to watchlist or deep analyze
-            </li>
-          </ul>
+          <h3 className="text-white font-medium mb-3">How to use</h3>
+          <div className="space-y-3 text-sm">
+            <div className="flex gap-3">
+              <span className="text-purple-400 font-medium shrink-0">1.</span>
+              <span className="text-slate-400">Select a sector to explore</span>
+            </div>
+            <div className="flex gap-3">
+              <span className="text-purple-400 font-medium shrink-0">2.</span>
+              <div className="text-slate-400">
+                <p>Choose a scan mode:</p>
+                <p className="text-xs text-slate-500 mt-1 ml-2">• Full AI Scan - All AIs (~$0.30)</p>
+                <p className="text-xs text-slate-500 ml-2">• Grok Social - X/Twitter (~$0.01)</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <span className="text-purple-400 font-medium shrink-0">3.</span>
+              <span className="text-slate-400">Add results to watchlist or deep analyze</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

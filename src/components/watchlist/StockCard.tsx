@@ -8,13 +8,36 @@
  * - Signal score badge
  * - Holdings badge with value
  * - Glow effect for strong signals (>=80% bullish or <=20%)
+ * - Scoped origin and performance tracking
  */
 
 import { memo } from 'react';
+import { Telescope } from 'lucide-react';
 import { Sparkline } from '@/components/charts/Sparkline';
 import { SignalBadge } from '@/components/ui/SignalBadge';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import type { AggregateScore } from '@/utils/signals';
+
+// Sector icon mapping
+const SECTOR_ICONS: Record<string, string> = {
+  tech: '💻',
+  biotech: '🧬',
+  finance: '🏦',
+  energy: '⚡',
+  healthcare: '🏥',
+  retail: '🛒',
+  gaming: '🎮',
+  meme: '🚀',
+};
+
+// Format date in European format
+function formatScopedDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
+}
 
 export interface StockCardProps {
   /** Stock symbol (e.g., "AAPL") */
@@ -31,6 +54,12 @@ export interface StockCardProps {
   sparklineData?: number[];
   /** Technical signal score */
   signalScore?: AggregateScore;
+  /** Scoped from sector */
+  scopedFrom?: string;
+  /** Scoped at timestamp */
+  scopedAt?: string;
+  /** Price when scoped */
+  scopedPrice?: number;
   /** Click handler */
   onClick?: () => void;
 }
@@ -43,6 +72,9 @@ export const StockCard = memo(function StockCard({
   changePercent,
   sparklineData = [],
   signalScore,
+  scopedFrom,
+  scopedAt,
+  scopedPrice,
   onClick,
 }: StockCardProps) {
   const { holdings } = useWatchlistStore();
@@ -51,6 +83,12 @@ export const StockCard = memo(function StockCard({
   const holdingValue = shares * price;
 
   const isPositive = change >= 0;
+
+  // Calculate performance since scoped
+  const scopedPerformance = scopedPrice && scopedPrice > 0
+    ? ((price - scopedPrice) / scopedPrice) * 100
+    : null;
+  const isScopedPositive = scopedPerformance !== null && scopedPerformance >= 0;
 
   // Determine glow effect based on signal score
   const glowClass = signalScore
@@ -87,6 +125,17 @@ export const StockCard = memo(function StockCard({
             )}
           </div>
           <p className="text-slate-400 text-sm truncate max-w-[180px]">{name}</p>
+          {/* Scoped Origin Info */}
+          {scopedFrom && scopedAt && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <Telescope className="w-3 h-3 text-purple-400" />
+              <span className="text-xs text-purple-400">
+                {SECTOR_ICONS[scopedFrom] || '📊'} {scopedFrom.charAt(0).toUpperCase() + scopedFrom.slice(1)}
+              </span>
+              <span className="text-xs text-slate-500">•</span>
+              <span className="text-xs text-slate-500">{formatScopedDate(scopedAt)}</span>
+            </div>
+          )}
         </div>
         <div className="text-right">
           <p className="text-white font-semibold text-lg">
@@ -100,6 +149,12 @@ export const StockCard = memo(function StockCard({
             {isPositive ? '▲' : '▼'} {isPositive ? '+' : ''}
             {changePercent.toFixed(2)}%
           </p>
+          {/* Performance since scoped */}
+          {scopedPerformance !== null && (
+            <p className={`text-xs mt-0.5 ${isScopedPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {isScopedPositive ? '📈' : '📉'} {isScopedPositive ? '+' : ''}{scopedPerformance.toFixed(1)}% since scoped
+            </p>
+          )}
         </div>
       </div>
 
