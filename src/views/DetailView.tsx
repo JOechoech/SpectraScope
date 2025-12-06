@@ -211,7 +211,13 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
   const exportAsImage = useCallback(async () => {
     if (!analysisRef.current || !analysis) return;
 
+    // Hide share menu BEFORE capturing
+    setShowShareMenu(false);
     setIsExporting(true);
+
+    // Wait for DOM to update
+    await new Promise(r => setTimeout(r, 100));
+
     try {
       // Create a wrapper div with branding footer
       const wrapper = document.createElement('div');
@@ -219,11 +225,18 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
         background: #000;
         padding: 24px;
         width: 800px;
+        white-space: pre-wrap;
+        word-spacing: normal;
       `;
 
       // Clone the analysis content
       const clone = analysisRef.current.cloneNode(true) as HTMLElement;
-      clone.style.cssText = 'width: 100%; background: #000;';
+      clone.style.cssText = 'width: 100%; background: #000; white-space: pre-wrap; word-spacing: normal;';
+
+      // Remove any popup elements from the clone
+      const popups = clone.querySelectorAll('[class*="fixed"], [class*="z-40"], [class*="z-50"]');
+      popups.forEach(el => el.remove());
+
       wrapper.appendChild(clone);
 
       // Add branded footer
@@ -261,7 +274,7 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
 
       // Capture with html2canvas
       const canvas = await html2canvas(wrapper, {
-        scale: 2, // 2x for retina
+        scale: 1.5, // 1.5x for good quality without being too large
         backgroundColor: '#000',
         logging: false,
         useCORS: true,

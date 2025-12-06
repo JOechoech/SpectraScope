@@ -341,27 +341,37 @@ export async function generateScenariosLegacy(
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Decode unicode escape sequences that weren't properly decoded
+ * Handles cases like "\u2022" appearing as literal text instead of "•"
+ */
+function decodeUnicodeEscapes(text: string): string {
+  return text.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
+}
+
 function normalizeScenario(raw: unknown, defaultTitle: string): Scenario {
   const scenario = raw as Record<string, unknown>;
   return {
     probability:
       typeof scenario.probability === 'number' ? scenario.probability : 33,
     priceTarget:
-      typeof scenario.priceTarget === 'string' ? scenario.priceTarget : 'N/A',
+      typeof scenario.priceTarget === 'string' ? decodeUnicodeEscapes(scenario.priceTarget) : 'N/A',
     timeframe:
       typeof scenario.timeframe === 'string'
-        ? scenario.timeframe
+        ? decodeUnicodeEscapes(scenario.timeframe)
         : '6-12 months',
-    title: typeof scenario.title === 'string' ? scenario.title : defaultTitle,
+    title: typeof scenario.title === 'string' ? decodeUnicodeEscapes(scenario.title) : defaultTitle,
     summary:
       typeof scenario.summary === 'string'
-        ? scenario.summary
+        ? decodeUnicodeEscapes(scenario.summary)
         : 'No summary available.',
     catalysts: Array.isArray(scenario.catalysts)
-      ? (scenario.catalysts as string[]).slice(0, 4)
+      ? (scenario.catalysts as string[]).slice(0, 4).map(c => decodeUnicodeEscapes(c))
       : [],
     risks: Array.isArray(scenario.risks)
-      ? (scenario.risks as string[]).slice(0, 3)
+      ? (scenario.risks as string[]).slice(0, 3).map(r => decodeUnicodeEscapes(r))
       : [],
   };
 }
@@ -682,8 +692,8 @@ export async function synthesizeFromIntelligence(
         options: optionsFlow as 'call-heavy' | 'balanced' | 'put-heavy',
       },
       confidence: Math.min(100, Math.max(0, parsed.confidence || 70)),
-      reasoning: parsed.reasoning || 'Analysis synthesized from available intelligence sources.',
-      bottomLine: parsed.bottomLine || 'Review the scenarios above for a comprehensive view of potential outcomes.',
+      reasoning: decodeUnicodeEscapes(parsed.reasoning || 'Analysis synthesized from available intelligence sources.'),
+      bottomLine: decodeUnicodeEscapes(parsed.bottomLine || 'Review the scenarios above for a comprehensive view of potential outcomes.'),
       overallSentiment: ['bullish', 'bearish', 'neutral'].includes(parsed.overallSentiment)
         ? parsed.overallSentiment
         : 'neutral',
@@ -719,11 +729,15 @@ function normalizeScenarioMulti(raw: unknown, defaultTitle: string): Scenario {
   const scenario = raw as Record<string, unknown>;
   return {
     probability: typeof scenario.probability === 'number' ? scenario.probability : 33,
-    priceTarget: typeof scenario.priceTarget === 'string' ? scenario.priceTarget : 'N/A',
-    timeframe: typeof scenario.timeframe === 'string' ? scenario.timeframe : '6-12 months',
-    title: typeof scenario.title === 'string' ? scenario.title : defaultTitle,
-    summary: typeof scenario.summary === 'string' ? scenario.summary : 'No summary available.',
-    catalysts: Array.isArray(scenario.catalysts) ? (scenario.catalysts as string[]).slice(0, 4) : [],
-    risks: Array.isArray(scenario.risks) ? (scenario.risks as string[]).slice(0, 3) : [],
+    priceTarget: typeof scenario.priceTarget === 'string' ? decodeUnicodeEscapes(scenario.priceTarget) : 'N/A',
+    timeframe: typeof scenario.timeframe === 'string' ? decodeUnicodeEscapes(scenario.timeframe) : '6-12 months',
+    title: typeof scenario.title === 'string' ? decodeUnicodeEscapes(scenario.title) : defaultTitle,
+    summary: typeof scenario.summary === 'string' ? decodeUnicodeEscapes(scenario.summary) : 'No summary available.',
+    catalysts: Array.isArray(scenario.catalysts)
+      ? (scenario.catalysts as string[]).slice(0, 4).map(c => decodeUnicodeEscapes(c))
+      : [],
+    risks: Array.isArray(scenario.risks)
+      ? (scenario.risks as string[]).slice(0, 3).map(r => decodeUnicodeEscapes(r))
+      : [],
   };
 }
