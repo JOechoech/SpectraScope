@@ -1,11 +1,10 @@
 /**
  * Unified Market Data Service - POLYGON ONLY
  *
- * Data source hierarchy:
- * 1. Polygon.io (when key exists) - Real-time, bulk loading
- * 2. Mock Data - Fallback when no keys available
- *
- * NO Alpha Vantage fallback - it's too slow and rate limited.
+ * CRITICAL: This service NEVER returns fake/mock data!
+ * If real data isn't available, it returns empty results.
+ * Users could make investment decisions based on what they see -
+ * showing fake prices is DANGEROUS.
  */
 
 import * as polygon from './api/polygon';
@@ -16,23 +15,25 @@ import type { StockQuote, HistoricalDataPoint } from '@/types';
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type DataSource = 'polygon' | 'mock';
+export type DataSource = 'polygon' | 'unavailable';
 
 export interface MarketDataResult<T> {
-  data: T;
+  data: T | null;
   source: DataSource;
   cached: boolean;
   timestamp: number;
+  error?: string;
 }
 
 export interface BulkQuotesResult {
   quotes: Map<string, StockQuote>;
   source: DataSource;
   errors: string[];
+  isDemo: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODULE-LEVEL CACHE (survives component navigation)
+// MODULE-LEVEL CACHE
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface QuoteCache {
@@ -46,6 +47,31 @@ const CACHE_TTL = 60 * 1000; // 60 seconds
 
 const dailyCache = new Map<string, { data: HistoricalDataPoint[]; source: DataSource; timestamp: number }>();
 const DAILY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIGURATION CHECK
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Check if Polygon API is properly configured
+ */
+export function isPolygonConfigured(): boolean {
+  const { getApiKey } = useApiKeysStore.getState();
+  const key = getApiKey('polygon');
+  return !!(key && key.trim().length > 10);
+}
+
+/**
+ * Get the Polygon API key if available
+ */
+function getPolygonKey(): string | null {
+  const { getApiKey } = useApiKeysStore.getState();
+  const key = getApiKey('polygon');
+  if (key && key.trim().length > 10) {
+    return key;
+  }
+  return null;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CACHE ACCESS FUNCTIONS
@@ -75,62 +101,64 @@ export function getDataSource(): DataSource | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// HELPER: Get Polygon Key
-// ═══════════════════════════════════════════════════════════════════════════
-
-function getPolygonKey(): string | null {
-  const { getApiKey } = useApiKeysStore.getState();
-  const key = getApiKey('polygon');
-  if (key && key.trim().length > 5) {
-    return key;
-  }
-  return null;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // FETCH QUOTES - Main function
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Fetch fresh quotes from API (Polygon only, fallback to mock)
+ * Fetch quotes from Polygon API
+ * NEVER returns fake/mock data!
  */
 export async function fetchQuotes(symbols: string[]): Promise<BulkQuotesResult> {
   const polygonKey = getPolygonKey();
   const errors: string[] = [];
+  const quotes = new Map<string, StockQuote>();
 
-  // Try Polygon ONLY
-  if (polygonKey) {
-    try {
-      console.log('[MarketData] Fetching from Polygon...');
-      const quotes = await polygon.getBulkSnapshot(symbols, polygonKey);
-
-      // Update cache
-      QUOTE_CACHE = {
-        quotes,
-        source: 'polygon',
-        timestamp: Date.now(),
-      };
-
-      console.log('[MarketData] Polygon success:', quotes.size, 'quotes');
-      return { quotes, source: 'polygon', errors };
-    } catch (error) {
-      console.error('[MarketData] Polygon error:', error);
-      errors.push(`Polygon: ${error}`);
-      // Fall through to mock
-    }
+  // No API key = no data (NOT mock data!)
+  if (!polygonKey) {
+    console.warn('[MarketData] No Polygon key - returning empty (NOT mock!)');
+    return {
+      quotes,
+      source: 'unavailable',
+      errors: ['No Polygon API key configured. Add your key in Settings.'],
+      isDemo: true,
+    };
   }
 
-  // Mock fallback
-  console.log('[MarketData] Using MOCK data');
-  const mockQuotes = polygon.getMockBulkSnapshot(symbols);
+  try {
+    console.log('[MarketData] Fetching from Polygon:', symbols);
+    const result = await polygon.getBulkSnapshot(symbols, polygonKey);
 
-  QUOTE_CACHE = {
-    quotes: mockQuotes,
-    source: 'mock',
-    timestamp: Date.now(),
-  };
+    // Filter out any quotes with price <= 0
+    for (const [symbol, quote] of result) {
+      if (quote.price > 0) {
+        quotes.set(symbol, quote);
+      } else {
+        errors.push(`${symbol}: No valid price data`);
+      }
+    }
 
-  return { quotes: mockQuotes, source: 'mock', errors };
+    // Update cache
+    QUOTE_CACHE = {
+      quotes,
+      source: 'polygon',
+      timestamp: Date.now(),
+    };
+
+    console.log('[MarketData] Polygon success:', quotes.size, 'valid quotes');
+    return { quotes, source: 'polygon', errors, isDemo: false };
+  } catch (error) {
+    console.error('[MarketData] Polygon error:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    errors.push(`API Error: ${errorMsg}`);
+
+    // Return empty - NEVER mock data
+    return {
+      quotes,
+      source: 'unavailable',
+      errors,
+      isDemo: true,
+    };
+  }
 }
 
 /**
@@ -144,6 +172,7 @@ export async function getQuotes(symbols: string[]): Promise<BulkQuotesResult> {
       quotes: QUOTE_CACHE.quotes,
       source: QUOTE_CACHE.source,
       errors: [],
+      isDemo: QUOTE_CACHE.source === 'unavailable',
     };
   }
 
@@ -157,8 +186,18 @@ export async function getQuotes(symbols: string[]): Promise<BulkQuotesResult> {
 export async function refreshInBackground(symbols: string[]): Promise<BulkQuotesResult> {
   // Return current cache immediately
   const currentCache = QUOTE_CACHE
-    ? { quotes: QUOTE_CACHE.quotes, source: QUOTE_CACHE.source, errors: [] as string[] }
-    : { quotes: new Map<string, StockQuote>(), source: 'mock' as DataSource, errors: [] as string[] };
+    ? {
+        quotes: QUOTE_CACHE.quotes,
+        source: QUOTE_CACHE.source,
+        errors: [] as string[],
+        isDemo: QUOTE_CACHE.source === 'unavailable',
+      }
+    : {
+        quotes: new Map<string, StockQuote>(),
+        source: 'unavailable' as DataSource,
+        errors: [] as string[],
+        isDemo: true,
+      };
 
   // Fetch in background (don't await)
   fetchQuotes(symbols).catch(console.error);
@@ -167,12 +206,9 @@ export async function refreshInBackground(symbols: string[]): Promise<BulkQuotes
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LEGACY COMPATIBILITY - getBulkQuotes
+// LEGACY COMPATIBILITY
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Legacy function - wraps getQuotes
- */
 export async function getBulkQuotes(symbols: string[]): Promise<BulkQuotesResult> {
   return getQuotes(symbols);
 }
@@ -182,10 +218,12 @@ export async function getBulkQuotes(symbols: string[]): Promise<BulkQuotesResult
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Get single stock quote
+ * Get single stock quote - returns null if unavailable (NEVER fake data)
  */
 export async function getQuote(symbol: string): Promise<MarketDataResult<StockQuote>> {
-  // Check module cache
+  const now = Date.now();
+
+  // Check module cache first
   if (QUOTE_CACHE && isCacheFresh()) {
     const cached = QUOTE_CACHE.quotes.get(symbol);
     if (cached) {
@@ -199,21 +237,41 @@ export async function getQuote(symbol: string): Promise<MarketDataResult<StockQu
   }
 
   const polygonKey = getPolygonKey();
-  const now = Date.now();
 
-  // Try Polygon
-  if (polygonKey) {
-    try {
-      const quote = await polygon.getQuote(symbol, polygonKey);
-      return { data: quote, source: 'polygon', cached: false, timestamp: now };
-    } catch (error) {
-      console.warn('[MarketData] Polygon single quote failed:', error);
-    }
+  // No API key = no data
+  if (!polygonKey) {
+    return {
+      data: null,
+      source: 'unavailable',
+      cached: false,
+      timestamp: now,
+      error: 'No Polygon API key configured',
+    };
   }
 
-  // Mock fallback
-  const mockQuote = polygon.getMockQuote(symbol);
-  return { data: mockQuote, source: 'mock', cached: false, timestamp: now };
+  // Try Polygon
+  try {
+    const quote = await polygon.getQuote(symbol, polygonKey);
+    if (quote.price > 0) {
+      return { data: quote, source: 'polygon', cached: false, timestamp: now };
+    }
+    return {
+      data: null,
+      source: 'unavailable',
+      cached: false,
+      timestamp: now,
+      error: 'No valid price data available',
+    };
+  } catch (error) {
+    console.warn('[MarketData] Polygon single quote failed:', error);
+    return {
+      data: null,
+      source: 'unavailable',
+      cached: false,
+      timestamp: now,
+      error: error instanceof Error ? error.message : 'API error',
+    };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -221,17 +279,18 @@ export async function getQuote(symbol: string): Promise<MarketDataResult<StockQu
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Get historical daily data
+ * Get historical daily data - returns empty array if unavailable
  */
 export async function getDailyData(
   symbol: string,
   days: number = 365
 ): Promise<MarketDataResult<HistoricalDataPoint[]>> {
   const cacheKey = `${symbol}-${days}`;
+  const now = Date.now();
 
   // Check cache
   const cached = dailyCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < DAILY_CACHE_TTL) {
+  if (cached && now - cached.timestamp < DAILY_CACHE_TTL) {
     return {
       data: cached.data,
       source: cached.source,
@@ -241,32 +300,39 @@ export async function getDailyData(
   }
 
   const polygonKey = getPolygonKey();
-  const now = Date.now();
 
-  // Try Polygon
-  if (polygonKey) {
-    try {
-      const data = await polygon.getDailyData(symbol, polygonKey, days);
-      dailyCache.set(cacheKey, { data, source: 'polygon', timestamp: now });
-      return { data, source: 'polygon', cached: false, timestamp: now };
-    } catch (error) {
-      console.warn('[MarketData] Polygon daily data failed:', error);
-    }
+  // No API key = no data
+  if (!polygonKey) {
+    return {
+      data: [],
+      source: 'unavailable',
+      cached: false,
+      timestamp: now,
+      error: 'No Polygon API key configured',
+    };
   }
 
-  // Mock fallback
-  const mockData = polygon.getMockDailyData(symbol, days);
-  dailyCache.set(cacheKey, { data: mockData, source: 'mock', timestamp: now });
-  return { data: mockData, source: 'mock', cached: false, timestamp: now };
+  // Try Polygon
+  try {
+    const data = await polygon.getDailyData(symbol, polygonKey, days);
+    dailyCache.set(cacheKey, { data, source: 'polygon', timestamp: now });
+    return { data, source: 'polygon', cached: false, timestamp: now };
+  } catch (error) {
+    console.warn('[MarketData] Polygon daily data failed:', error);
+    return {
+      data: [],
+      source: 'unavailable',
+      cached: false,
+      timestamp: now,
+      error: error instanceof Error ? error.message : 'API error',
+    };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// OPTIONS DATA (Polygon only)
+// OPTIONS DATA
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get options chain - only available with Polygon
- */
 export async function getOptionsChain(
   symbol: string,
   expirationDate?: string
@@ -282,9 +348,6 @@ export async function getOptionsChain(
   }
 }
 
-/**
- * Get options metrics - only available with Polygon
- */
 export async function getOptionsMetrics(
   symbol: string
 ): Promise<polygon.OptionsMetrics | null> {
@@ -307,80 +370,40 @@ export function clearCache(): void {
 }
 
 /**
- * Get info about current data source
- */
-export function getDataSourceInfo(): {
-  source: DataSource;
-  capabilities: string[];
-} {
-  const polygonKey = getPolygonKey();
-  const source: DataSource = polygonKey ? 'polygon' : 'mock';
-
-  const capabilities: Record<DataSource, string[]> = {
-    polygon: [
-      'Real-time quotes',
-      'Bulk loading (one API call)',
-      'Options chain with Greeks',
-      'No rate limiting',
-    ],
-    mock: [
-      'Demo data only',
-      'No real market data',
-    ],
-  };
-
-  return { source, capabilities: capabilities[source] };
-}
-
-/**
  * Get current data provider
  */
 export function getCurrentProvider(): DataSource {
-  const polygonKey = getPolygonKey();
-  return polygonKey ? 'polygon' : 'mock';
+  return isPolygonConfigured() ? 'polygon' : 'unavailable';
 }
 
 /**
- * Get human-readable label for current provider
- */
-export function getProviderLabel(): string {
-  const provider = getCurrentProvider();
-  switch (provider) {
-    case 'polygon':
-      return 'Real-time via Polygon.io';
-    default:
-      return 'Demo mode (no API key)';
-  }
-}
-
-/**
- * Get provider info with color for UI display
+ * Get provider info with UI display properties
  */
 export function getProviderInfo(): {
   source: DataSource;
   label: string;
-  color: 'emerald' | 'slate';
+  color: 'emerald' | 'amber' | 'slate';
+  isDemo: boolean;
 } {
-  const source = getCurrentProvider();
-
-  switch (source) {
-    case 'polygon':
-      return {
-        source,
-        label: 'Real-time via Polygon.io',
-        color: 'emerald',
-      };
-    default:
-      return {
-        source,
-        label: 'Demo mode - Add Polygon key in Settings',
-        color: 'slate',
-      };
+  if (isPolygonConfigured()) {
+    return {
+      source: 'polygon',
+      label: 'Real-time via Polygon.io',
+      color: 'emerald',
+      isDemo: false,
+    };
   }
+
+  return {
+    source: 'unavailable',
+    label: 'No data - Add Polygon API key in Settings',
+    color: 'slate',
+    isDemo: true,
+  };
 }
 
 /**
- * Check if current provider supports real-time data
+ * Check if using real-time data
  */
 export function isRealtime(): boolean {
   return getCurrentProvider() === 'polygon';
@@ -403,9 +426,8 @@ export default {
   getOptionsMetrics,
   // Utils
   clearCache,
-  getDataSourceInfo,
   getCurrentProvider,
-  getProviderLabel,
   getProviderInfo,
   isRealtime,
+  isPolygonConfigured,
 };

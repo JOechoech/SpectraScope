@@ -28,6 +28,7 @@ interface WatchlistState {
   setAvgCost: (symbol: string, avgCost: number) => void;
   getHolding: (symbol: string) => Holding | null;
   getTotalShares: (symbol: string) => number;
+  getHoldingsWithShares: () => Holding[]; // Get all holdings with shares > 0
 
   // Analysis
   addAnalysis: (symbol: string, analysis: AnalysisResult) => void;
@@ -171,6 +172,11 @@ export const useWatchlistStore = create<WatchlistState>()(
       getHolding: (symbol) => get().holdings[symbol] || null,
 
       getTotalShares: (symbol) => get().holdings[symbol]?.shares || 0,
+
+      getHoldingsWithShares: () => {
+        const { holdings } = get();
+        return Object.values(holdings).filter((h) => h.shares > 0);
+      },
 
       addAnalysis: (symbol, analysis) =>
         set((state) => {
