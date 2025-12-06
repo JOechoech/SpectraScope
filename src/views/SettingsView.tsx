@@ -24,6 +24,9 @@ import {
   Sun,
   Trash2,
   Activity,
+  History,
+  Clock,
+  TrendingDown,
 } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { ApiKeyInput, ActiveSourcesCard } from '@/components/settings';
@@ -124,7 +127,7 @@ export const SettingsView = memo(function SettingsView({
     validateApiKey,
   } = useApiKeysStore();
 
-  const { totalCost, totalAnalyses, clearHistory } = useAnalysisStore();
+  const { totalCost, totalAnalyses, clearHistory, analyses } = useAnalysisStore();
   const { theme, toggleTheme } = useSettingsStore();
 
   const [saved, setSaved] = useState<Record<string, boolean>>({});
@@ -171,6 +174,49 @@ export const SettingsView = memo(function SettingsView({
       minimumFractionDigits: 4,
       maximumFractionDigits: 4,
     });
+  }, []);
+
+  // Get all analyses sorted by timestamp (newest first)
+  const allAnalyses = useMemo(() => {
+    const allEntries: Array<{
+      symbol: string;
+      timestamp: string;
+      cost: number;
+      type: string;
+      dominantScenario: string;
+    }> = [];
+
+    Object.entries(analyses).forEach(([symbol, entries]) => {
+      entries.forEach(entry => {
+        allEntries.push({
+          symbol,
+          timestamp: entry.timestamp,
+          cost: entry.cost,
+          type: entry.type,
+          dominantScenario: entry.dominantScenario,
+        });
+      });
+    });
+
+    return allEntries.sort((a, b) =>
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    ).slice(0, 20); // Show last 20 analyses
+  }, [analyses]);
+
+  // Format relative time
+  const formatRelativeTime = useCallback((timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
   }, []);
 
   return (
@@ -342,6 +388,82 @@ export const SettingsView = memo(function SettingsView({
                 </button>
               )}
             </div>
+          </div>
+        </Section>
+
+        {/* Analysis History Section */}
+        <Section
+          icon={History}
+          iconGradient="from-blue-500/20 to-indigo-500/20"
+          iconColor="text-blue-400"
+          title="Analysis History"
+          subtitle="Past AI analyses"
+        >
+          <div className="bg-slate-900/30 border border-slate-800/50 rounded-2xl overflow-hidden">
+            {allAnalyses.length === 0 ? (
+              <div className="p-6 text-center">
+                <History size={32} className="text-slate-700 mx-auto mb-3" />
+                <p className="text-slate-500 text-sm">No analyses yet</p>
+                <p className="text-slate-600 text-xs mt-1">
+                  Run a Scope Analysis to see history here
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-800/50">
+                {allAnalyses.map((analysis, index) => (
+                  <div
+                    key={`${analysis.symbol}-${analysis.timestamp}-${index}`}
+                    className="p-3 hover:bg-slate-800/30 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {/* Scenario Indicator */}
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          analysis.dominantScenario === 'bull'
+                            ? 'bg-emerald-500/20'
+                            : analysis.dominantScenario === 'bear'
+                            ? 'bg-rose-500/20'
+                            : 'bg-blue-500/20'
+                        }`}>
+                          {analysis.dominantScenario === 'bull' ? (
+                            <TrendingUp size={16} className="text-emerald-400" />
+                          ) : analysis.dominantScenario === 'bear' ? (
+                            <TrendingDown size={16} className="text-rose-400" />
+                          ) : (
+                            <Activity size={16} className="text-blue-400" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-white font-semibold">
+                              {analysis.symbol}
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              analysis.dominantScenario === 'bull'
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : analysis.dominantScenario === 'bear'
+                                ? 'bg-rose-500/20 text-rose-400'
+                                : 'bg-blue-500/20 text-blue-400'
+                            }`}>
+                              {analysis.dominantScenario}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-slate-500 text-xs mt-0.5">
+                            <Clock size={10} />
+                            <span>{formatRelativeTime(analysis.timestamp)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-slate-400 text-sm">
+                          {formatCurrency.format(analysis.cost)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </Section>
 

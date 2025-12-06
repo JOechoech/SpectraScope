@@ -23,11 +23,11 @@ interface AISource {
 }
 
 const AI_SOURCES: AISource[] = [
-  { id: 'technical', name: 'TECHNICALS', icon: '📊', color: '#3b82f6', description: 'Analyzing patterns...' },
-  { id: 'news', name: 'NEWS', icon: '📰', color: '#f59e0b', description: 'Scanning headlines...' },
-  { id: 'grok', name: 'GROK', icon: '𝕏', color: '#1d9bf0', description: 'Reading X/Twitter...' },
-  { id: 'gemini', name: 'GEMINI', icon: '✦', color: '#8b5cf6', description: 'Researching analysts...' },
-  { id: 'claude', name: 'CLAUDE', icon: '🧠', color: '#d97706', description: 'Synthesizing insights...' },
+  { id: 'technical', name: 'TECHNICALS', icon: '📊', color: '#3b82f6', description: 'ANALYZING TECHNICAL INDICATORS...' },
+  { id: 'openai', name: 'OPENAI', icon: '🤖', color: '#10b981', description: 'OPENAI SCANNING LATEST NEWS...' },
+  { id: 'grok', name: 'GROK', icon: '𝕏', color: '#1d9bf0', description: 'GROK ANALYZING X SENTIMENT...' },
+  { id: 'gemini', name: 'GEMINI', icon: '✦', color: '#8b5cf6', description: 'GEMINI RESEARCHING WEB DATA...' },
+  { id: 'claude', name: 'CLAUDE', icon: '🧠', color: '#d97706', description: 'CLAUDE SYNTHESIZING INTELLIGENCE...' },
 ];
 
 export const WarpAnimation = memo(function WarpAnimation({
@@ -39,6 +39,8 @@ export const WarpAnimation = memo(function WarpAnimation({
   const [currentAI, setCurrentAI] = useState<AISource | null>(null);
   const [arrivedAIs, setArrivedAIs] = useState<string[]>([]);
   const [phase, setPhase] = useState<'warp' | 'arriving' | 'synthesizing'>('warp');
+  const [powerLevel, setPowerLevel] = useState(0);
+  const [statusText, setStatusText] = useState('INITIALIZING SPECTRASCOPE...');
 
   // AI arrival sequence
   useEffect(() => {
@@ -46,6 +48,8 @@ export const WarpAnimation = memo(function WarpAnimation({
       setCurrentAI(null);
       setArrivedAIs([]);
       setPhase('warp');
+      setPowerLevel(0);
+      setStatusText('INITIALIZING SPECTRASCOPE...');
       return;
     }
 
@@ -59,11 +63,14 @@ export const WarpAnimation = memo(function WarpAnimation({
         const ai = AI_SOURCES[currentIndex];
         setCurrentAI(ai);
         setPhase('arriving');
+        setStatusText(ai.description);
         onPhaseChange?.(ai.id);
 
         setTimeout(() => {
           if (cancelled) return;
           setArrivedAIs(prev => [...prev, ai.id]);
+          // Update power level based on completed AIs (20% per AI)
+          setPowerLevel(Math.min(100, (currentIndex + 1) * 20));
           setCurrentAI(null);
           currentIndex++;
 
@@ -71,6 +78,7 @@ export const WarpAnimation = memo(function WarpAnimation({
             setTimeout(showNextAI, 200);
           } else {
             setPhase('synthesizing');
+            setStatusText('ANALYSIS COMPLETE');
           }
         }, 1000);
       }
@@ -191,6 +199,70 @@ export const WarpAnimation = memo(function WarpAnimation({
       <canvas ref={canvasRef} className="absolute inset-0" />
 
       <div className="absolute inset-0 flex flex-col items-center justify-center">
+        {/* AI Power Bar at Top */}
+        <div className="absolute top-20 left-0 right-0 px-8">
+          <div className="max-w-md mx-auto">
+            {/* Label */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-amber-400 animate-pulse">⚡</span>
+                <span className="text-xs font-bold tracking-[0.2em] text-amber-400">
+                  AI POWER
+                </span>
+              </div>
+              <span className="text-xs font-mono text-white/80">
+                {powerLevel}%
+              </span>
+            </div>
+
+            {/* Power Bar */}
+            <div className={`relative h-4 rounded-full overflow-hidden bg-slate-800/80 ${
+              powerLevel >= 80 ? 'animate-vibrate' : ''
+            }`}>
+              {/* Fill */}
+              <div
+                className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${
+                  powerLevel >= 80
+                    ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 animate-power-surge'
+                    : powerLevel >= 50
+                    ? 'bg-gradient-to-r from-blue-500 to-cyan-400'
+                    : 'bg-gradient-to-r from-blue-600 to-blue-500'
+                }`}
+                style={{ width: `${powerLevel}%` }}
+              />
+
+              {/* Electric Sparks at Edge */}
+              {powerLevel > 0 && powerLevel < 100 && (
+                <div
+                  className="absolute top-0 bottom-0 w-6 animate-electric-spark"
+                  style={{ left: `calc(${powerLevel}% - 12px)` }}
+                >
+                  <div className="absolute inset-0 bg-white/60 blur-sm rounded-full" />
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full" />
+                </div>
+              )}
+
+              {/* Lightning bolts when high power */}
+              {powerLevel >= 70 && (
+                <>
+                  <div className="absolute -top-4 left-1/4 text-yellow-300 text-sm animate-pulse">⚡</div>
+                  <div className="absolute -top-4 right-1/4 text-yellow-300 text-sm animate-pulse animation-delay-200">⚡</div>
+                  <div className="absolute -bottom-4 left-1/3 text-yellow-300 text-xs animate-pulse animation-delay-300">⚡</div>
+                </>
+              )}
+            </div>
+
+            {/* Dynamic Status Text */}
+            <div className="mt-3 text-center">
+              <span className={`text-xs font-mono tracking-widest ${
+                powerLevel >= 100 ? 'text-emerald-400' : 'text-cyan-400'
+              } animate-pulse`}>
+                {statusText}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* AI Arrival Announcement */}
         {currentAI && (
           <div className="animate-arrive text-center">
@@ -211,9 +283,6 @@ export const WarpAnimation = memo(function WarpAnimation({
             </div>
             <div className="text-white/70 text-lg tracking-widest">
               ARRIVED
-            </div>
-            <div className="text-white/40 text-sm mt-2">
-              {currentAI.description}
             </div>
           </div>
         )}
