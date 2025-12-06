@@ -18,7 +18,9 @@ interface HoldingsInputProps {
 
 export function HoldingsInput({ symbol, currentPrice }: HoldingsInputProps) {
   const { holdings, setShares, setAvgCost } = useWatchlistStore();
-  const holding = holdings[symbol];
+  // ALWAYS use uppercase for consistent lookups
+  const upperSymbol = symbol.toUpperCase();
+  const holding = holdings[upperSymbol];
 
   const [localShares, setLocalShares] = useState(holding?.shares || 0);
   const [localAvgCost, setLocalAvgCost] = useState(holding?.avgCost || 0);
@@ -31,9 +33,10 @@ export function HoldingsInput({ symbol, currentPrice }: HoldingsInputProps) {
   }, [holding]);
 
   const handleSave = () => {
-    setShares(symbol, localShares);
+    // Store already normalizes to uppercase, but be explicit
+    setShares(upperSymbol, localShares);
     if (localAvgCost > 0) {
-      setAvgCost(symbol, localAvgCost);
+      setAvgCost(upperSymbol, localAvgCost);
     }
     setIsEditing(false);
   };
