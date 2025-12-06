@@ -1,8 +1,41 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { HomeView, DetailView, SettingsView, SearchView, PortfolioView, SpectraScopeView, DreamView } from '@/views';
 import { Navigation } from '@/components/layout';
 import { MarketStatusBar } from '@/components/ui';
+import { DreamEffects, ScopeEffects } from '@/components/effects';
 import type { ViewName } from '@/types';
+
+// Theme type for each view
+type ThemeType = 'home' | 'dream' | 'scope' | 'search' | 'settings' | 'default';
+
+// Map views to their themes
+const viewThemeMap: Record<ViewName, ThemeType> = {
+  watchlist: 'home',
+  dream: 'dream',
+  spectrascope: 'scope',
+  search: 'search',
+  settings: 'settings',
+  detail: 'default',
+  portfolio: 'home',
+};
+
+// Get theme class for root container
+const getThemeClass = (theme: ThemeType): string => {
+  switch (theme) {
+    case 'dream':
+      return 'theme-dream';
+    case 'scope':
+      return 'theme-scope';
+    case 'search':
+      return 'theme-search';
+    case 'home':
+      return 'theme-home';
+    case 'settings':
+      return 'theme-settings';
+    default:
+      return '';
+  }
+};
 
 /**
  * SpectraScope - Main App Component
@@ -35,8 +68,15 @@ export default function App() {
     setView(newView);
   }, []);
 
+  // Get the current theme based on view
+  const currentTheme = useMemo(() => viewThemeMap[view], [view]);
+  const themeClass = useMemo(() => getThemeClass(currentTheme), [currentTheme]);
+
   return (
-    <div className="font-sans antialiased min-h-screen bg-black">
+    <div className={`font-sans antialiased min-h-screen bg-black transition-all duration-300 ${themeClass}`}>
+      {/* Immersive Effects Layer */}
+      {currentTheme === 'dream' && <DreamEffects />}
+      {currentTheme === 'scope' && <ScopeEffects />}
       {/* Global Styles */}
       <style>{`
         @keyframes fadeIn {
