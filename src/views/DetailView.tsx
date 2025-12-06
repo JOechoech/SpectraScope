@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, memo, useCallback, useRef } from 'react';
-import { ArrowLeft, RefreshCw, AlertCircle, Share2, Copy, Download, Check, Tag, Trash2, X, Archive, History } from 'lucide-react';
+import { ArrowLeft, RefreshCw, AlertCircle, Share2, Copy, Download, Check, Tag, Trash2, X, Archive } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useAnalysisStore } from '@/stores/useAnalysisStore';
@@ -83,7 +83,7 @@ export const DetailView = memo(function DetailView({
   onBack,
 }: DetailViewProps) {
   const { getApiKey } = useApiKeysStore();
-  const { addAnalysis, getLatestAnalysis, getHistory } = useAnalysisStore();
+  const { addAnalysis, getLatestAnalysis, getHistory, clearHistory } = useAnalysisStore();
   const { items: watchlistItems, updateStock } = useWatchlistStore();
 
   const polygonKey = getApiKey('polygon');
@@ -105,13 +105,7 @@ export const DetailView = memo(function DetailView({
   const [copied, setCopied] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showRemoveScopeConfirm, setShowRemoveScopeConfirm] = useState(false);
-  const [showHistoryArchive, setShowHistoryArchive] = useState(false);
-
-  // Get analysis history for this stock
-  const analysisHistory = getHistory(symbol);
-  const MAX_VISIBLE_HISTORY = 5;
-  const recentHistory = analysisHistory.slice(0, MAX_VISIBLE_HISTORY);
-  const archivedHistory = analysisHistory.slice(MAX_VISIBLE_HISTORY);
+  const [showAnalysisArchive, setShowAnalysisArchive] = useState(false);
 
   // Get scoped info for this stock
   const watchlistItem = watchlistItems.find((w) => w.symbol === symbol);
@@ -191,6 +185,74 @@ export const DetailView = memo(function DetailView({
       const days = Math.floor(hoursDiff / 24);
       return { text: `${days} day${days === 1 ? '' : 's'} old`, color: '#64748b', colorClass: 'text-slate-400' };
     }
+  };
+
+  // Calculate prediction accuracy for past analyses
+  const calculatePredictionAccuracy = (entry: any, currentPrice: number) => {
+    if (!entry?.result || !entry?.inputData?.price) return null;
+
+    const priceAtAnalysis = entry.inputData.price;
+    const result = entry.result;
+    const scenarios = result.scenarios || result;
+
+    if (!scenarios?.bull || !scenarios?.bear || !scenarios?.base) return null;
+
+    // Parse price targets from scenario strings
+    const parseTarget = (targetStr: string): number | null => {
+      if (!targetStr) return null;
+      const match = targetStr.match(/([+-]?\d+(?:\.\d+)?)/g);
+      if (match && match.length > 0) {
+        const lastPercent = parseFloat(match[match.length - 1]);
+        return priceAtAnalysis * (1 + lastPercent / 100);
+      }
+      return null;
+    };
+
+    const bullTarget = parseTarget(scenarios.bull.priceTarget);
+    const bearTarget = parseTarget(scenarios.bear.priceTarget);
+    const baseTarget = parseTarget(scenarios.base.priceTarget);
+
+    const actualChange = ((currentPrice - priceAtAnalysis) / priceAtAnalysis) * 100;
+
+    // Determine which case was hit
+    let verdict = 'Between cases';
+    let verdictColor = 'text-blue-400';
+    let verdictIcon = '📊';
+
+    if (bullTarget && currentPrice >= bullTarget) {
+      verdict = 'Bull Case Achieved!';
+      verdictColor = 'text-emerald-400';
+      verdictIcon = '🎯';
+    } else if (bearTarget && currentPrice <= bearTarget) {
+      verdict = 'Bear Case Hit';
+      verdictColor = 'text-rose-400';
+      verdictIcon = '📉';
+    } else if (baseTarget && Math.abs(currentPrice - baseTarget) / baseTarget < 0.1) {
+      verdict = 'Base Case Achieved';
+      verdictColor = 'text-blue-400';
+      verdictIcon = '✅';
+    }
+
+    // Time since analysis
+    const daysSince = Math.floor((Date.now() - new Date(entry.timestamp).getTime()) / (1000 * 60 * 60 * 24));
+    const isTooRecent = daysSince < 7;
+
+    return {
+      priceAtAnalysis,
+      currentPrice,
+      actualChange,
+      bullTarget,
+      bearTarget,
+      baseTarget,
+      bullProb: scenarios.bull.probability,
+      bearProb: scenarios.bear.probability,
+      baseProb: scenarios.base.probability,
+      verdict: isTooRecent ? 'Too early to judge' : verdict,
+      verdictColor: isTooRecent ? 'text-slate-400' : verdictColor,
+      verdictIcon: isTooRecent ? '⏳' : verdictIcon,
+      daysSince,
+      isTooRecent,
+    };
   };
 
   // Generate markdown text from analysis
@@ -928,136 +990,228 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
           </div>
         )}
 
-        {/* Analysis History Section */}
-        {analysisHistory.length > 1 && (
-          <div className="mt-6 bg-slate-900/50 border border-slate-800/50 rounded-2xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-800/50 flex items-center justify-between">
-              <h3 className="text-white font-medium flex items-center gap-2">
-                <History className="w-4 h-4 text-purple-400" />
-                Prediction History
-              </h3>
-              <span className="text-slate-500 text-xs">
-                {analysisHistory.length} analyses
-              </span>
+        {/* Prediction History - Show past analyses and their accuracy */}
+        {quote && (() => {
+          const history = getHistory(symbol);
+          // Skip the first one (current analysis) and show older ones
+          const pastAnalyses = history.slice(1, 6); // Show up to 5 past analyses
+
+          if (pastAnalyses.length === 0) return null;
+
+          // Calculate accuracy stats
+          const accuracyResults = pastAnalyses
+            .map(entry => calculatePredictionAccuracy(entry, quote.price))
+            .filter(Boolean);
+
+          const hitCount = accuracyResults.filter(r => r && !r.isTooRecent && (r.verdict.includes('Achieved') || r.verdict.includes('Hit'))).length;
+          const judgeableCount = accuracyResults.filter(r => r && !r.isTooRecent).length;
+
+          return (
+            <div className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-white font-semibold flex items-center gap-2">
+                  📈 Prediction History
+                  {judgeableCount > 0 && (
+                    <span className="text-slate-400 text-sm font-normal">
+                      • {hitCount}/{judgeableCount} accurate
+                    </span>
+                  )}
+                </h3>
+                {history.length > 3 && (
+                  <button
+                    onClick={() => setShowAnalysisArchive(true)}
+                    className="text-indigo-400 text-xs flex items-center gap-1 hover:text-indigo-300 transition-colors"
+                  >
+                    <Archive className="w-3 h-3" />
+                    View All ({history.length})
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                {pastAnalyses.map((entry) => {
+                  const accuracy = calculatePredictionAccuracy(entry, quote.price);
+                  if (!accuracy) return null;
+
+                  const analysisDate = new Date(entry.timestamp);
+                  const dateStr = `${analysisDate.getDate().toString().padStart(2, '0')}.${(analysisDate.getMonth() + 1).toString().padStart(2, '0')}.${analysisDate.getFullYear()}`;
+
+                  return (
+                    <div key={entry.id} className="bg-slate-800/50 rounded-lg p-3 text-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-slate-400">
+                          {dateStr} ({accuracy.daysSince} days ago)
+                        </span>
+                        <span className={`${accuracy.verdictColor} font-medium flex items-center gap-1`}>
+                          {accuracy.verdictIcon} {accuracy.verdict}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Price then:</span>
+                          <span className="text-slate-300">${accuracy.priceAtAnalysis.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Now:</span>
+                          <span className={accuracy.actualChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                            ${accuracy.currentPrice.toFixed(2)} ({accuracy.actualChange >= 0 ? '+' : ''}{accuracy.actualChange.toFixed(1)}%)
+                          </span>
+                        </div>
+                      </div>
+
+                      {!accuracy.isTooRecent && (
+                        <div className="mt-2 pt-2 border-t border-slate-700/50 grid grid-cols-3 gap-1 text-xs">
+                          <div className="text-center">
+                            <span className={accuracy.bullTarget && accuracy.currentPrice >= accuracy.bullTarget ? 'text-emerald-400 font-medium' : 'text-slate-500'}>
+                              🐂 {accuracy.bullProb}%
+                              {accuracy.bullTarget && accuracy.currentPrice >= accuracy.bullTarget && ' ✓'}
+                            </span>
+                          </div>
+                          <div className="text-center">
+                            <span className={accuracy.baseTarget && Math.abs(accuracy.currentPrice - accuracy.baseTarget) / accuracy.baseTarget < 0.1 ? 'text-blue-400 font-medium' : 'text-slate-500'}>
+                              📊 {accuracy.baseProb}%
+                              {accuracy.baseTarget && Math.abs(accuracy.currentPrice - accuracy.baseTarget) / accuracy.baseTarget < 0.1 && ' ✓'}
+                            </span>
+                          </div>
+                          <div className="text-center">
+                            <span className={accuracy.bearTarget && accuracy.currentPrice <= accuracy.bearTarget ? 'text-rose-400 font-medium' : 'text-slate-500'}>
+                              🐻 {accuracy.bearProb}%
+                              {accuracy.bearTarget && accuracy.currentPrice <= accuracy.bearTarget && ' ✓'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {history.length > 6 && (
+                <p className="text-slate-500 text-xs text-center mt-3">
+                  Showing last 5 of {history.length - 1} past analyses
+                </p>
+              )}
             </div>
-            <div className="p-3 space-y-2">
-              {recentHistory.slice(1).map((entry) => {
-                const entryDate = new Date(entry.timestamp);
-                const formattedDate = `${entryDate.getDate().toString().padStart(2, '0')}.${(entryDate.getMonth() + 1).toString().padStart(2, '0')}.${entryDate.getFullYear()}`;
-                const ageIndicator = getAgeIndicator(entry.timestamp);
-                const dominantScenario = entry.result?.[entry.dominantScenario];
+          );
+        })()}
+      </div>
+    </div>
+
+    {/* Analysis History Archive Modal */}
+    {showAnalysisArchive && quote && (() => {
+      const history = getHistory(symbol);
+
+      return (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 overflow-y-auto">
+          <div className="min-h-screen px-4 py-8">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Archive className="w-5 h-5 text-indigo-400" />
+                Analysis Archive
+                <span className="text-slate-400 text-sm font-normal">({history.length})</span>
+              </h2>
+              <button
+                onClick={() => setShowAnalysisArchive(false)}
+                className="w-10 h-10 rounded-full bg-slate-800/80 flex items-center justify-center"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
+            </div>
+
+            {/* All Analyses */}
+            <div className="space-y-3">
+              {history.map((entry, index) => {
+                const accuracy = calculatePredictionAccuracy(entry, quote.price);
+                if (!accuracy) return null;
+
+                const analysisDate = new Date(entry.timestamp);
+                const dateStr = `${analysisDate.getDate().toString().padStart(2, '0')}.${(analysisDate.getMonth() + 1).toString().padStart(2, '0')}.${analysisDate.getFullYear()}`;
+                const isLatest = index === 0;
 
                 return (
                   <div
                     key={entry.id}
-                    className="bg-slate-800/50 rounded-xl p-3"
+                    className={`bg-slate-900/70 border rounded-xl p-4 ${isLatest ? 'border-indigo-500/50' : 'border-slate-800/50'}`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-slate-400 text-sm">
-                        Analysis from {formattedDate}
-                      </span>
-                      <span className={`text-xs ${ageIndicator.colorClass}`}>
-                        {ageIndicator.text}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-medium">
+                          {dateStr}
+                        </span>
+                        {isLatest && (
+                          <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-400 text-xs rounded-full">
+                            Latest
+                          </span>
+                        )}
+                        <span className="text-slate-500 text-sm">
+                          ({accuracy.daysSince} days ago)
+                        </span>
+                      </div>
+                      <span className={`${accuracy.verdictColor} font-medium flex items-center gap-1`}>
+                        {accuracy.verdictIcon} {accuracy.verdict}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-0.5 rounded ${
-                        entry.dominantScenario === 'bull' ? 'bg-emerald-500/20 text-emerald-400' :
-                        entry.dominantScenario === 'bear' ? 'bg-rose-500/20 text-rose-400' :
-                        'bg-slate-500/20 text-slate-400'
-                      }`}>
-                        {entry.dominantScenario.charAt(0).toUpperCase() + entry.dominantScenario.slice(1)} Case
-                      </span>
-                      {dominantScenario?.priceTarget && (
-                        <span className="text-slate-500 text-xs">
-                          Target: {dominantScenario.priceTarget}
+
+                    <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Price then:</span>
+                        <span className="text-white">${accuracy.priceAtAnalysis.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Now:</span>
+                        <span className={accuracy.actualChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          ${accuracy.currentPrice.toFixed(2)} ({accuracy.actualChange >= 0 ? '+' : ''}{accuracy.actualChange.toFixed(1)}%)
                         </span>
-                      )}
-                      <span className="text-slate-600 text-xs ml-auto">
-                        ${entry.cost.toFixed(4)}
-                      </span>
+                      </div>
+                    </div>
+
+                    {/* Scenario probabilities */}
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className={`text-center p-2 rounded-lg ${accuracy.bullTarget && accuracy.currentPrice >= accuracy.bullTarget ? 'bg-emerald-500/20' : 'bg-slate-800/50'}`}>
+                        <span className={accuracy.bullTarget && accuracy.currentPrice >= accuracy.bullTarget ? 'text-emerald-400 font-medium' : 'text-slate-400'}>
+                          🐂 Bull {accuracy.bullProb}%
+                          {accuracy.bullTarget && accuracy.currentPrice >= accuracy.bullTarget && ' ✓'}
+                        </span>
+                      </div>
+                      <div className={`text-center p-2 rounded-lg ${accuracy.baseTarget && Math.abs(accuracy.currentPrice - accuracy.baseTarget) / accuracy.baseTarget < 0.1 ? 'bg-blue-500/20' : 'bg-slate-800/50'}`}>
+                        <span className={accuracy.baseTarget && Math.abs(accuracy.currentPrice - accuracy.baseTarget) / accuracy.baseTarget < 0.1 ? 'text-blue-400 font-medium' : 'text-slate-400'}>
+                          📊 Base {accuracy.baseProb}%
+                          {accuracy.baseTarget && Math.abs(accuracy.currentPrice - accuracy.baseTarget) / accuracy.baseTarget < 0.1 && ' ✓'}
+                        </span>
+                      </div>
+                      <div className={`text-center p-2 rounded-lg ${accuracy.bearTarget && accuracy.currentPrice <= accuracy.bearTarget ? 'bg-rose-500/20' : 'bg-slate-800/50'}`}>
+                        <span className={accuracy.bearTarget && accuracy.currentPrice <= accuracy.bearTarget ? 'text-rose-400 font-medium' : 'text-slate-400'}>
+                          🐻 Bear {accuracy.bearProb}%
+                          {accuracy.bearTarget && accuracy.currentPrice <= accuracy.bearTarget && ' ✓'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-            {/* Archive Button */}
-            {archivedHistory.length > 0 && (
-              <div className="px-3 pb-3">
-                <button
-                  onClick={() => setShowHistoryArchive(true)}
-                  className="w-full py-2.5 text-slate-400 border border-slate-700 rounded-xl hover:bg-slate-800/50 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Archive className="w-4 h-4" />
-                  View Archive ({archivedHistory.length} older analyses)
-                </button>
-              </div>
+
+            {/* Clear History Button */}
+            {history.length > 1 && (
+              <button
+                onClick={() => {
+                  if (confirm(`Delete all ${history.length} analyses for ${symbol}?`)) {
+                    clearHistory(symbol);
+                    setShowAnalysisArchive(false);
+                  }
+                }}
+                className="w-full mt-6 py-3 text-rose-400 text-sm flex items-center justify-center gap-2 hover:bg-rose-500/10 rounded-xl transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear All History
+              </button>
             )}
           </div>
-        )}
-
-        {/* History Archive Modal */}
-        {showHistoryArchive && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
-              <div className="flex items-center justify-between p-4 border-b border-slate-800 sticky top-0 bg-slate-900">
-                <h3 className="text-white font-semibold flex items-center gap-2">
-                  <Archive className="w-5 h-5 text-slate-400" />
-                  Analysis Archive
-                </h3>
-                <button
-                  onClick={() => setShowHistoryArchive(false)}
-                  className="p-2 text-slate-400 hover:text-white transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-4 space-y-2">
-                {archivedHistory.map((entry) => {
-                  const entryDate = new Date(entry.timestamp);
-                  const formattedDate = `${entryDate.getDate().toString().padStart(2, '0')}.${(entryDate.getMonth() + 1).toString().padStart(2, '0')}.${entryDate.getFullYear()}`;
-                  const ageIndicator = getAgeIndicator(entry.timestamp);
-                  const dominantScenario = entry.result?.[entry.dominantScenario];
-
-                  return (
-                    <div
-                      key={entry.id}
-                      className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-3"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-slate-400 text-sm">
-                          {formattedDate}
-                        </span>
-                        <span className={`text-xs ${ageIndicator.colorClass}`}>
-                          {ageIndicator.text}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-2 py-0.5 rounded ${
-                          entry.dominantScenario === 'bull' ? 'bg-emerald-500/20 text-emerald-400' :
-                          entry.dominantScenario === 'bear' ? 'bg-rose-500/20 text-rose-400' :
-                          'bg-slate-500/20 text-slate-400'
-                        }`}>
-                          {entry.dominantScenario.charAt(0).toUpperCase() + entry.dominantScenario.slice(1)} Case
-                        </span>
-                        {dominantScenario?.priceTarget && (
-                          <span className="text-slate-500 text-xs">
-                            Target: {dominantScenario.priceTarget}
-                          </span>
-                        )}
-                        <span className="text-slate-600 text-xs ml-auto">
-                          ${entry.cost.toFixed(4)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+        </div>
+      );
+    })()}
     </>
   );
 });

@@ -35,6 +35,7 @@ import { ApiKeyInput, ActiveSourcesCard } from '@/components/settings';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useAnalysisStore } from '@/stores/useAnalysisStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useQuoteCacheStore } from '@/stores/useQuoteCacheStore';
 import { APP_VERSION, APP_NAME, APP_DESCRIPTION } from '@/constants/version';
 import type { ApiKeys } from '@/types';
 
@@ -131,6 +132,51 @@ export const SettingsView = memo(function SettingsView({
 
   const { totalCost, totalAnalyses, clearHistory, analyses } = useAnalysisStore();
   const { theme, toggleTheme } = useSettingsStore();
+  const cachedQuotes = useQuoteCacheStore((s) => s.quotes);
+
+  // Calculate prediction status for an analysis
+  const getPredictionStatus = useCallback((analysis: any) => {
+    const entry = analyses[analysis.symbol]?.find(e => e.timestamp === analysis.timestamp);
+    if (!entry?.result || !entry?.inputData?.price) return null;
+
+    const priceAtAnalysis = entry.inputData.price;
+    const cachedQuote = cachedQuotes[analysis.symbol];
+    const currentPrice = cachedQuote?.price;
+
+    if (!currentPrice || !priceAtAnalysis) return null;
+
+    const result = entry.result as any;
+    const scenarios = result.scenarios || result;
+    if (!scenarios?.bull?.priceTarget) return null;
+
+    // Parse targets
+    const parseTarget = (targetStr: string): number | null => {
+      if (!targetStr) return null;
+      const match = targetStr.match(/([+-]?\d+(?:\.\d+)?)/g);
+      if (match && match.length > 0) {
+        return priceAtAnalysis * (1 + parseFloat(match[match.length - 1]) / 100);
+      }
+      return null;
+    };
+
+    const bullTarget = parseTarget(scenarios.bull.priceTarget);
+    const bearTarget = parseTarget(scenarios.bear?.priceTarget);
+
+    const actualChange = ((currentPrice - priceAtAnalysis) / priceAtAnalysis) * 100;
+    const daysSince = Math.floor((Date.now() - new Date(analysis.timestamp).getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysSince < 7) {
+      return { status: 'Too early', color: 'text-slate-400', icon: '⏳', actualChange };
+    }
+
+    if (bullTarget && currentPrice >= bullTarget) {
+      return { status: 'Bull Hit!', color: 'text-emerald-400', icon: '🎯', actualChange };
+    }
+    if (bearTarget && currentPrice <= bearTarget) {
+      return { status: 'Bear Hit', color: 'text-rose-400', icon: '📉', actualChange };
+    }
+    return { status: 'In progress', color: 'text-blue-400', icon: '📊', actualChange };
+  }, [analyses, cachedQuotes]);
 
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>(() => {
@@ -426,58 +472,75 @@ export const SettingsView = memo(function SettingsView({
               </div>
             ) : (
               <div className="divide-y divide-slate-800/50">
-                {allAnalyses.map((analysis, index) => (
-                  <div
-                    key={`${analysis.symbol}-${analysis.timestamp}-${index}`}
-                    className="p-3 hover:bg-slate-800/30 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        {/* Scenario Indicator */}
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                          analysis.dominantScenario === 'bull'
-                            ? 'bg-emerald-500/20'
-                            : analysis.dominantScenario === 'bear'
-                            ? 'bg-rose-500/20'
-                            : 'bg-blue-500/20'
-                        }`}>
-                          {analysis.dominantScenario === 'bull' ? (
-                            <TrendingUp size={16} className="text-emerald-400" />
-                          ) : analysis.dominantScenario === 'bear' ? (
-                            <TrendingDown size={16} className="text-rose-400" />
+                {allAnalyses.map((analysis, index) => {
+                  const predictionStatus = getPredictionStatus(analysis);
+                  return (
+                    <div
+                      key={`${analysis.symbol}-${analysis.timestamp}-${index}`}
+                      className="p-3 hover:bg-slate-800/30 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {/* Scenario Indicator */}
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                            analysis.dominantScenario === 'bull'
+                              ? 'bg-emerald-500/20'
+                              : analysis.dominantScenario === 'bear'
+                              ? 'bg-rose-500/20'
+                              : 'bg-blue-500/20'
+                          }`}>
+                            {analysis.dominantScenario === 'bull' ? (
+                              <TrendingUp size={16} className="text-emerald-400" />
+                            ) : analysis.dominantScenario === 'bear' ? (
+                              <TrendingDown size={16} className="text-rose-400" />
+                            ) : (
+                              <Activity size={16} className="text-blue-400" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-semibold">
+                                {analysis.symbol}
+                              </span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                analysis.dominantScenario === 'bull'
+                                  ? 'bg-emerald-500/20 text-emerald-400'
+                                  : analysis.dominantScenario === 'bear'
+                                  ? 'bg-rose-500/20 text-rose-400'
+                                  : 'bg-blue-500/20 text-blue-400'
+                              }`}>
+                                {analysis.dominantScenario}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-slate-500 text-xs mt-0.5">
+                              <Clock size={10} />
+                              <span>{formatRelativeTime(analysis.timestamp)}</span>
+                              {predictionStatus && (
+                                <>
+                                  <span>•</span>
+                                  <span className={predictionStatus.actualChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                                    {predictionStatus.actualChange >= 0 ? '+' : ''}{predictionStatus.actualChange.toFixed(1)}%
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          {predictionStatus ? (
+                            <span className={`${predictionStatus.color} text-sm flex items-center gap-1`}>
+                              {predictionStatus.icon} {predictionStatus.status}
+                            </span>
                           ) : (
-                            <Activity size={16} className="text-blue-400" />
+                            <span className="text-slate-400 text-sm">
+                              {formatCurrency.format(analysis.cost)}
+                            </span>
                           )}
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-white font-semibold">
-                              {analysis.symbol}
-                            </span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              analysis.dominantScenario === 'bull'
-                                ? 'bg-emerald-500/20 text-emerald-400'
-                                : analysis.dominantScenario === 'bear'
-                                ? 'bg-rose-500/20 text-rose-400'
-                                : 'bg-blue-500/20 text-blue-400'
-                            }`}>
-                              {analysis.dominantScenario}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 text-slate-500 text-xs mt-0.5">
-                            <Clock size={10} />
-                            <span>{formatRelativeTime(analysis.timestamp)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-slate-400 text-sm">
-                          {formatCurrency.format(analysis.cost)}
-                        </span>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
