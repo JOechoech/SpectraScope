@@ -144,11 +144,13 @@
 
   body {
     @apply bg-black text-slate-100 antialiased;
-    padding-top: var(--safe-area-inset-top);
+    /* NO padding-top - background must extend into status bar area */
+    /* Views use padding-top to push content down */
     padding-bottom: var(--safe-area-inset-bottom);
     padding-left: var(--safe-area-inset-left);
     padding-right: var(--safe-area-inset-right);
     overscroll-behavior: none;
+    min-height: 100vh;
   }
 
   /* Prevent text selection on interactive elements */
@@ -792,10 +794,13 @@
 .theme-home {
   background: linear-gradient(
     180deg,
-    rgba(6, 78, 97, 0.15) 0%,
-    rgba(8, 51, 68, 0.1) 30%,
+    #0d9488 0%,
+    rgba(13, 148, 136, 0.6) 3%,
+    rgba(6, 78, 97, 0.25) 15%,
+    rgba(8, 51, 68, 0.1) 35%,
     rgba(0, 0, 0, 1) 60%
   );
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -804,11 +809,14 @@
 .theme-dream {
   background: linear-gradient(
     180deg,
-    rgba(88, 28, 135, 0.25) 0%,
-    rgba(76, 29, 149, 0.15) 25%,
-    rgba(30, 27, 75, 0.2) 50%,
-    rgba(0, 0, 0, 1) 70%
+    #7c3aed 0%,
+    rgba(124, 58, 237, 0.6) 3%,
+    rgba(88, 28, 135, 0.35) 15%,
+    rgba(76, 29, 149, 0.15) 35%,
+    rgba(30, 27, 75, 0.2) 55%,
+    rgba(0, 0, 0, 1) 75%
   );
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .dream-gradient-overlay {
@@ -930,17 +938,19 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   SCOPE THEME - Pink/Orange electric gradient (enhanced)
+   SCOPE THEME - Orange electric gradient (enhanced)
    ───────────────────────────────────────────────────────────────────────────── */
 .theme-scope {
   background: linear-gradient(
     180deg,
-    rgba(234, 88, 12, 0.25) 0%,
-    rgba(249, 115, 22, 0.18) 20%,
-    rgba(157, 23, 77, 0.12) 40%,
-    rgba(30, 20, 20, 0.1) 60%,
-    rgba(0, 0, 0, 1) 80%
+    #f97316 0%,
+    rgba(249, 115, 22, 0.7) 3%,
+    rgba(234, 88, 12, 0.4) 15%,
+    rgba(249, 115, 22, 0.2) 35%,
+    rgba(157, 23, 77, 0.1) 50%,
+    rgba(0, 0, 0, 1) 75%
   );
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .scope-gradient-overlay {
@@ -1099,10 +1109,13 @@
 .theme-search {
   background: linear-gradient(
     180deg,
-    rgba(6, 78, 59, 0.22) 0%,
-    rgba(8, 145, 178, 0.12) 25%,
+    #10b981 0%,
+    rgba(16, 185, 129, 0.6) 3%,
+    rgba(6, 78, 59, 0.3) 15%,
+    rgba(8, 145, 178, 0.12) 35%,
     rgba(0, 0, 0, 1) 60%
   );
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .search-gradient-overlay {
@@ -1186,10 +1199,13 @@
 .theme-settings {
   background: linear-gradient(
     180deg,
-    rgba(51, 65, 85, 0.15) 0%,
-    rgba(30, 41, 59, 0.1) 30%,
+    #1e293b 0%,
+    rgba(30, 41, 59, 0.7) 3%,
+    rgba(51, 65, 85, 0.25) 15%,
+    rgba(30, 41, 59, 0.1) 35%,
     rgba(0, 0, 0, 1) 60%
   );
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1307,41 +1323,11 @@
    SAFE AREA THEMING - iOS notch and home indicator
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Top safe area colored background */
-.theme-home::before,
-.theme-dream::before,
-.theme-scope::before,
-.theme-search::before,
-.theme-settings::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: env(safe-area-inset-top, 0px);
-  z-index: 9999;
-  pointer-events: none;
-}
-
-.theme-home::before {
-  background: linear-gradient(180deg, rgba(13,148,136,0.6) 0%, rgba(13,148,136,0.3) 100%);
-}
-
-.theme-dream::before {
-  background: linear-gradient(180deg, rgba(124,58,237,0.6) 0%, rgba(124,58,237,0.3) 100%);
-}
-
-.theme-scope::before {
-  background: linear-gradient(180deg, rgba(234,88,12,0.6) 0%, rgba(234,88,12,0.3) 100%);
-}
-
-.theme-search::before {
-  background: linear-gradient(180deg, rgba(16,185,129,0.6) 0%, rgba(16,185,129,0.3) 100%);
-}
-
-.theme-settings::before {
-  background: linear-gradient(180deg, rgba(30,41,59,0.8) 0%, rgba(30,41,59,0.4) 100%);
-}
+/* With black-translucent status bar style:
+   - Status bar is TRANSPARENT (shows app background through it)
+   - Theme gradients have solid color at 0% which shows in status bar area
+   - No ::before pseudo-elements needed - background naturally extends up
+   - Views add padding-top via theme classes to push content below status bar */
 
 /* Bottom safe area matches nav theme */
 .safe-bottom {
