@@ -65,16 +65,16 @@ const themeColors: Record<NavItem['theme'], {
 const getNavbarBgClass = (activeTheme: NavItem['theme']) => {
   switch (activeTheme) {
     case 'dream':
-      return 'bg-gradient-to-t from-black/95 to-violet-950/80 backdrop-blur-lg border-t border-violet-800/30';
+      return 'nav-theme-dream';
     case 'scope':
-      return 'bg-gradient-to-t from-black/95 to-rose-950/60 backdrop-blur-lg border-t border-orange-800/30';
+      return 'nav-theme-scope';
     case 'search':
-      return 'bg-gradient-to-t from-black/95 to-emerald-950/50 backdrop-blur-lg border-t border-emerald-800/30';
+      return 'nav-theme-search';
     case 'home':
-      return 'bg-gradient-to-t from-black/95 to-cyan-950/40 backdrop-blur-lg border-t border-cyan-800/30';
+      return 'nav-theme-home';
     case 'settings':
     default:
-      return 'bg-black/95 backdrop-blur-lg border-t border-slate-800/50';
+      return 'nav-theme-settings';
   }
 };
 
@@ -99,7 +99,7 @@ export const Navigation = memo(function Navigation({
   return (
     <nav className={`
       flex items-center justify-around px-1 py-1 safe-bottom
-      transition-all duration-300
+      transition-all duration-300 backdrop-blur-lg
       ${getNavbarBgClass(activeTheme)}
     `}>
       {navItems.map((item) => {
