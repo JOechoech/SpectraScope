@@ -16,8 +16,8 @@ import Anthropic from '@anthropic-ai/sdk';
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-const OPUS_MODEL = 'claude-opus-4-5-20250514';
-const SONNET_MODEL = 'claude-sonnet-4-5-20250514';
+const OPUS_MODEL = 'claude-opus-4-5-20251101';
+const SONNET_MODEL = 'claude-sonnet-4-5-20250929';
 
 // Token costs (USD per 1K tokens)
 const OPUS_INPUT_COST = 0.015;   // $15 per 1M
