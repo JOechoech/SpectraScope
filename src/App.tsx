@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { WatchlistView, DetailView, SettingsView, SearchView, PortfolioView } from '@/views';
+import { HomeView, DetailView, SettingsView, SearchView, PortfolioView } from '@/views';
 import { Navigation } from '@/components/layout';
 import { MarketStatusBar } from '@/components/ui';
 import type { ViewName } from '@/types';
@@ -26,10 +26,6 @@ export default function App() {
 
   const handleOpenSettings = useCallback(() => {
     setView('settings');
-  }, []);
-
-  const handleOpenPortfolio = useCallback(() => {
-    setView('portfolio');
   }, []);
 
   const handleNavigate = useCallback((newView: ViewName) => {
@@ -75,10 +71,9 @@ export default function App() {
 
       {/* Views */}
       {view === 'watchlist' && (
-        <WatchlistView
+        <HomeView
           onSelectStock={handleSelectStock}
           onOpenSettings={handleOpenSettings}
-          onOpenPortfolio={handleOpenPortfolio}
         />
       )}
 
