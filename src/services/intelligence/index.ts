@@ -94,12 +94,23 @@ export function getMissingSources(): IntelligenceSource[] {
 // MAIN GATHER FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════
 
+export interface GatherIntelligenceProgress {
+  phase: 'orchestrating' | 'searching' | 'synthesizing';
+  keywords?: string[];
+  agentProgress?: {
+    grok?: { progress: number; keywords: string[] };
+    openai?: { progress: number; keywords: string[] };
+    gemini?: { progress: number; keywords: string[] };
+  };
+}
+
 export interface GatherIntelligenceParams {
   symbol: string;
   companyName?: string;
   priceData: HistoricalDataPoint[];
   currentPrice: number;
   sector?: string;
+  onProgress?: (progress: GatherIntelligenceProgress) => void;
 }
 
 /**
@@ -116,7 +127,7 @@ export interface GatherIntelligenceParams {
 export async function gatherIntelligence(
   params: GatherIntelligenceParams
 ): Promise<AggregatedIntelligence> {
-  const { symbol, companyName, priceData, currentPrice, sector } = params;
+  const { symbol, companyName, priceData, currentPrice, sector, onProgress } = params;
   const availableSources = getAvailableSources();
   const missingSources = getMissingSources();
   const store = useApiKeysStore.getState();
@@ -124,6 +135,9 @@ export async function gatherIntelligence(
   // Step 1: Get orchestrator instructions from Claude Opus (if available)
   let orchestratorInstructions: OrchestratorInstructions | null = null;
   const anthropicKey = store.getApiKey('anthropic');
+
+  // Report orchestrating phase
+  onProgress?.({ phase: 'orchestrating' });
 
   if (anthropicKey && companyName) {
     try {
@@ -136,55 +150,98 @@ export async function gatherIntelligence(
         apiKey: anthropicKey,
       });
       console.debug('[Intelligence] Opus generated custom prompts:', orchestratorInstructions.keyTopics);
+
+      // Report keywords from orchestrator
+      onProgress?.({
+        phase: 'orchestrating',
+        keywords: orchestratorInstructions.keyTopics,
+      });
     } catch (error) {
       console.error('[Intelligence] Orchestrator failed, using default prompts:', error);
     }
   }
 
   // Step 2: Gather from all available sources in parallel (with custom prompts)
-  const gatherPromises: Promise<AnyIntelligenceReport | null>[] = [];
+  // Report searching phase
+  onProgress?.({
+    phase: 'searching',
+    keywords: orchestratorInstructions?.keyTopics,
+    agentProgress: {
+      grok: { progress: 0, keywords: [] },
+      openai: { progress: 0, keywords: [] },
+      gemini: { progress: 0, keywords: [] },
+    },
+  });
+
+  // Extract keywords for each agent from their prompts
+  const extractKeywords = (prompt?: string): string[] => {
+    if (!prompt) return [];
+    // Extract key terms from the prompt (simplified extraction)
+    const words = prompt.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
+    const stopWords = ['this', 'that', 'with', 'from', 'have', 'what', 'when', 'where', 'which', 'will', 'about', 'your', 'their', 'these', 'those', 'would', 'could', 'should', 'being', 'having'];
+    return [...new Set(words.filter(w => !stopWords.includes(w)))].slice(0, 4);
+  };
+
+  const grokKeywords = extractKeywords(orchestratorInstructions?.grokPrompt) || ['sentiment', 'trending', 'viral'];
+  const openaiKeywords = extractKeywords(orchestratorInstructions?.openaiPrompt) || ['earnings', 'press', 'news'];
+  const geminiKeywords = extractKeywords(orchestratorInstructions?.geminiPrompt) || ['analyst', 'target', 'rating'];
+
+  // Track individual agent progress
+  const agentProgress = {
+    grok: { progress: 0, keywords: grokKeywords },
+    openai: { progress: 0, keywords: openaiKeywords },
+    gemini: { progress: 0, keywords: geminiKeywords },
+  };
 
   // Technical Analysis (always available - no custom prompt needed)
-  gatherPromises.push(
-    gatherTechnicalIntelligence(symbol, priceData, currentPrice)
-  );
+  const technicalPromise = gatherTechnicalIntelligence(symbol, priceData, currentPrice);
 
   // News Sentiment (OpenAI with custom prompt)
-  if (availableSources.includes('news-sentiment')) {
-    gatherPromises.push(
-      gatherNewsIntelligence(symbol, companyName, orchestratorInstructions?.openaiPrompt)
-    );
-  } else {
-    gatherPromises.push(Promise.resolve(null));
-  }
+  const newsPromise = availableSources.includes('news-sentiment')
+    ? gatherNewsIntelligence(symbol, companyName, orchestratorInstructions?.openaiPrompt)
+        .then((result) => {
+          agentProgress.openai.progress = 100;
+          onProgress?.({ phase: 'searching', keywords: orchestratorInstructions?.keyTopics, agentProgress });
+          return result;
+        })
+    : Promise.resolve(null);
 
   // Social Sentiment (Grok/X with custom prompt)
-  if (availableSources.includes('social-sentiment')) {
-    gatherPromises.push(
-      gatherSocialIntelligence(symbol, companyName, orchestratorInstructions?.grokPrompt)
-    );
-  } else {
-    gatherPromises.push(Promise.resolve(null));
-  }
+  const socialPromise = availableSources.includes('social-sentiment')
+    ? gatherSocialIntelligence(symbol, companyName, orchestratorInstructions?.grokPrompt)
+        .then((result) => {
+          agentProgress.grok.progress = 100;
+          onProgress?.({ phase: 'searching', keywords: orchestratorInstructions?.keyTopics, agentProgress });
+          return result;
+        })
+    : Promise.resolve(null);
 
   // Web Research (Gemini with custom prompt)
-  if (availableSources.includes('web-research')) {
-    gatherPromises.push(
-      gatherResearchIntelligence(symbol, companyName, currentPrice, orchestratorInstructions?.geminiPrompt)
-    );
-  } else {
-    gatherPromises.push(Promise.resolve(null));
-  }
+  const researchPromise = availableSources.includes('web-research')
+    ? gatherResearchIntelligence(symbol, companyName, currentPrice, orchestratorInstructions?.geminiPrompt)
+        .then((result) => {
+          agentProgress.gemini.progress = 100;
+          onProgress?.({ phase: 'searching', keywords: orchestratorInstructions?.keyTopics, agentProgress });
+          return result;
+        })
+    : Promise.resolve(null);
 
   // Options Flow (no custom prompt - data-based)
-  if (availableSources.includes('options-flow')) {
-    gatherPromises.push(gatherOptionsIntelligence(symbol));
-  } else {
-    gatherPromises.push(Promise.resolve(null));
-  }
+  const optionsPromise = availableSources.includes('options-flow')
+    ? gatherOptionsIntelligence(symbol)
+    : Promise.resolve(null);
 
   // Wait for all sources
-  const results = await Promise.all(gatherPromises);
+  const results = await Promise.all([
+    technicalPromise,
+    newsPromise,
+    socialPromise,
+    researchPromise,
+    optionsPromise,
+  ]);
+
+  // Report synthesizing phase
+  onProgress?.({ phase: 'synthesizing' });
 
   // Filter out null results and failed fetches
   const reports = results.filter(
