@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, memo, useCallback, useRef } from 'react';
-import { ArrowLeft, RefreshCw, AlertCircle, Share2, Copy, Download, Check, Tag, Trash2, X } from 'lucide-react';
+import { ArrowLeft, RefreshCw, AlertCircle, Share2, Copy, Download, Check, Tag, Trash2, X, Archive } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useAnalysisStore } from '@/stores/useAnalysisStore';
@@ -83,7 +83,7 @@ export const DetailView = memo(function DetailView({
   onBack,
 }: DetailViewProps) {
   const { getApiKey } = useApiKeysStore();
-  const { addAnalysis, getLatestAnalysis, getHistory } = useAnalysisStore();
+  const { addAnalysis, getLatestAnalysis, getHistory, clearHistory } = useAnalysisStore();
   const { items: watchlistItems, updateStock } = useWatchlistStore();
 
   const polygonKey = getApiKey('polygon');
@@ -105,6 +105,7 @@ export const DetailView = memo(function DetailView({
   const [copied, setCopied] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showRemoveScopeConfirm, setShowRemoveScopeConfirm] = useState(false);
+  const [showAnalysisArchive, setShowAnalysisArchive] = useState(false);
 
   // Get scoped info for this stock
   const watchlistItem = watchlistItems.find((w) => w.symbol === symbol);
@@ -1007,14 +1008,25 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
 
           return (
             <div className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
-              <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-                📈 Prediction History
-                {judgeableCount > 0 && (
-                  <span className="text-slate-400 text-sm font-normal">
-                    • {hitCount}/{judgeableCount} accurate ({judgeableCount > 0 ? Math.round((hitCount / judgeableCount) * 100) : 0}%)
-                  </span>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-white font-semibold flex items-center gap-2">
+                  📈 Prediction History
+                  {judgeableCount > 0 && (
+                    <span className="text-slate-400 text-sm font-normal">
+                      • {hitCount}/{judgeableCount} accurate
+                    </span>
+                  )}
+                </h3>
+                {history.length > 3 && (
+                  <button
+                    onClick={() => setShowAnalysisArchive(true)}
+                    className="text-indigo-400 text-xs flex items-center gap-1 hover:text-indigo-300 transition-colors"
+                  >
+                    <Archive className="w-3 h-3" />
+                    View All ({history.length})
+                  </button>
                 )}
-              </h3>
+              </div>
 
               <div className="space-y-3">
                 {pastAnalyses.map((entry) => {
@@ -1085,6 +1097,121 @@ ${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
         })()}
       </div>
     </div>
+
+    {/* Analysis History Archive Modal */}
+    {showAnalysisArchive && quote && (() => {
+      const history = getHistory(symbol);
+
+      return (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 overflow-y-auto">
+          <div className="min-h-screen px-4 py-8">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Archive className="w-5 h-5 text-indigo-400" />
+                Analysis Archive
+                <span className="text-slate-400 text-sm font-normal">({history.length})</span>
+              </h2>
+              <button
+                onClick={() => setShowAnalysisArchive(false)}
+                className="w-10 h-10 rounded-full bg-slate-800/80 flex items-center justify-center"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
+            </div>
+
+            {/* All Analyses */}
+            <div className="space-y-3">
+              {history.map((entry, index) => {
+                const accuracy = calculatePredictionAccuracy(entry, quote.price);
+                if (!accuracy) return null;
+
+                const analysisDate = new Date(entry.timestamp);
+                const dateStr = `${analysisDate.getDate().toString().padStart(2, '0')}.${(analysisDate.getMonth() + 1).toString().padStart(2, '0')}.${analysisDate.getFullYear()}`;
+                const isLatest = index === 0;
+
+                return (
+                  <div
+                    key={entry.id}
+                    className={`bg-slate-900/70 border rounded-xl p-4 ${isLatest ? 'border-indigo-500/50' : 'border-slate-800/50'}`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-medium">
+                          {dateStr}
+                        </span>
+                        {isLatest && (
+                          <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-400 text-xs rounded-full">
+                            Latest
+                          </span>
+                        )}
+                        <span className="text-slate-500 text-sm">
+                          ({accuracy.daysSince} days ago)
+                        </span>
+                      </div>
+                      <span className={`${accuracy.verdictColor} font-medium flex items-center gap-1`}>
+                        {accuracy.verdictIcon} {accuracy.verdict}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Price then:</span>
+                        <span className="text-white">${accuracy.priceAtAnalysis.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Now:</span>
+                        <span className={accuracy.actualChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          ${accuracy.currentPrice.toFixed(2)} ({accuracy.actualChange >= 0 ? '+' : ''}{accuracy.actualChange.toFixed(1)}%)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Scenario probabilities */}
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className={`text-center p-2 rounded-lg ${accuracy.bullTarget && accuracy.currentPrice >= accuracy.bullTarget ? 'bg-emerald-500/20' : 'bg-slate-800/50'}`}>
+                        <span className={accuracy.bullTarget && accuracy.currentPrice >= accuracy.bullTarget ? 'text-emerald-400 font-medium' : 'text-slate-400'}>
+                          🐂 Bull {accuracy.bullProb}%
+                          {accuracy.bullTarget && accuracy.currentPrice >= accuracy.bullTarget && ' ✓'}
+                        </span>
+                      </div>
+                      <div className={`text-center p-2 rounded-lg ${accuracy.baseTarget && Math.abs(accuracy.currentPrice - accuracy.baseTarget) / accuracy.baseTarget < 0.1 ? 'bg-blue-500/20' : 'bg-slate-800/50'}`}>
+                        <span className={accuracy.baseTarget && Math.abs(accuracy.currentPrice - accuracy.baseTarget) / accuracy.baseTarget < 0.1 ? 'text-blue-400 font-medium' : 'text-slate-400'}>
+                          📊 Base {accuracy.baseProb}%
+                          {accuracy.baseTarget && Math.abs(accuracy.currentPrice - accuracy.baseTarget) / accuracy.baseTarget < 0.1 && ' ✓'}
+                        </span>
+                      </div>
+                      <div className={`text-center p-2 rounded-lg ${accuracy.bearTarget && accuracy.currentPrice <= accuracy.bearTarget ? 'bg-rose-500/20' : 'bg-slate-800/50'}`}>
+                        <span className={accuracy.bearTarget && accuracy.currentPrice <= accuracy.bearTarget ? 'text-rose-400 font-medium' : 'text-slate-400'}>
+                          🐻 Bear {accuracy.bearProb}%
+                          {accuracy.bearTarget && accuracy.currentPrice <= accuracy.bearTarget && ' ✓'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Clear History Button */}
+            {history.length > 1 && (
+              <button
+                onClick={() => {
+                  if (confirm(`Delete all ${history.length} analyses for ${symbol}?`)) {
+                    clearHistory(symbol);
+                    setShowAnalysisArchive(false);
+                  }
+                }}
+                className="w-full mt-6 py-3 text-rose-400 text-sm flex items-center justify-center gap-2 hover:bg-rose-500/10 rounded-xl transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear All History
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    })()}
     </>
   );
 });
