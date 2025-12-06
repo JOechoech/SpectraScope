@@ -228,7 +228,7 @@ export interface PriceAlert {
 // APP STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type ViewName = 'watchlist' | 'detail' | 'settings' | 'search' | 'portfolio' | 'spectrascope';
+export type ViewName = 'watchlist' | 'detail' | 'settings' | 'search' | 'portfolio' | 'spectrascope' | 'dream';
 
 export interface AppState {
   currentView: ViewName;

@@ -614,3 +614,167 @@
 .animate-lightning {
   animation: lightning 3s ease-in-out infinite;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DREAM MODE ANIMATIONS - Dreamy cloud/aurora effects
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Dream background gradient */
+.dream-bg {
+  background: linear-gradient(
+    180deg,
+    rgba(88, 28, 135, 0.3) 0%,
+    rgba(76, 29, 149, 0.2) 30%,
+    rgba(30, 27, 75, 0.4) 70%,
+    rgba(0, 0, 0, 1) 100%
+  );
+}
+
+/* Moon mode gradient - golden/green */
+.dream-bg-moon {
+  background: linear-gradient(
+    180deg,
+    rgba(16, 185, 129, 0.2) 0%,
+    rgba(251, 191, 36, 0.15) 30%,
+    rgba(16, 185, 129, 0.1) 70%,
+    rgba(0, 0, 0, 1) 100%
+  );
+}
+
+/* Doom mode gradient - red/dark */
+.dream-bg-doom {
+  background: linear-gradient(
+    180deg,
+    rgba(244, 63, 94, 0.25) 0%,
+    rgba(127, 29, 29, 0.2) 30%,
+    rgba(0, 0, 0, 0.8) 70%,
+    rgba(0, 0, 0, 1) 100%
+  );
+}
+
+/* Floating clouds */
+@keyframes float-cloud-1 {
+  0%, 100% { transform: translateX(0) translateY(0); opacity: 0.3; }
+  25% { transform: translateX(20px) translateY(-10px); opacity: 0.5; }
+  50% { transform: translateX(40px) translateY(-5px); opacity: 0.4; }
+  75% { transform: translateX(20px) translateY(-15px); opacity: 0.35; }
+}
+
+@keyframes float-cloud-2 {
+  0%, 100% { transform: translateX(0) translateY(0); opacity: 0.25; }
+  33% { transform: translateX(-30px) translateY(10px); opacity: 0.4; }
+  66% { transform: translateX(-15px) translateY(5px); opacity: 0.3; }
+}
+
+@keyframes float-cloud-3 {
+  0%, 100% { transform: translateX(0) translateY(0) scale(1); opacity: 0.2; }
+  50% { transform: translateX(25px) translateY(-20px) scale(1.1); opacity: 0.35; }
+}
+
+.animate-cloud-1 {
+  animation: float-cloud-1 15s ease-in-out infinite;
+}
+
+.animate-cloud-2 {
+  animation: float-cloud-2 20s ease-in-out infinite;
+}
+
+.animate-cloud-3 {
+  animation: float-cloud-3 25s ease-in-out infinite;
+}
+
+/* Twinkling stars */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+
+.animate-twinkle {
+  animation: twinkle 3s ease-in-out infinite;
+}
+
+.animate-twinkle-slow {
+  animation: twinkle 5s ease-in-out infinite;
+}
+
+.animate-twinkle-fast {
+  animation: twinkle 2s ease-in-out infinite;
+}
+
+/* Aurora wave effect */
+@keyframes aurora-wave {
+  0%, 100% {
+    transform: translateY(0) scaleY(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateY(-30px) scaleY(1.2);
+    opacity: 0.6;
+  }
+}
+
+.animate-aurora {
+  animation: aurora-wave 8s ease-in-out infinite;
+}
+
+/* Moon glow */
+@keyframes moon-glow {
+  0%, 100% {
+    box-shadow: 0 0 40px rgba(139, 92, 246, 0.3), 0 0 80px rgba(139, 92, 246, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 60px rgba(139, 92, 246, 0.5), 0 0 120px rgba(139, 92, 246, 0.25);
+  }
+}
+
+.animate-moon-glow {
+  animation: moon-glow 4s ease-in-out infinite;
+}
+
+/* Dream text shimmer */
+@keyframes dream-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.text-gradient-dream {
+  background: linear-gradient(
+    90deg,
+    #a78bfa 0%,
+    #c4b5fd 25%,
+    #e9d5ff 50%,
+    #c4b5fd 75%,
+    #a78bfa 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: dream-shimmer 3s linear infinite;
+}
+
+/* Rocket shake for moon mode */
+@keyframes rocket-shake {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  10% { transform: translateY(-2px) rotate(-1deg); }
+  20% { transform: translateY(2px) rotate(1deg); }
+  30% { transform: translateY(-2px) rotate(-1deg); }
+  40% { transform: translateY(2px) rotate(1deg); }
+  50% { transform: translateY(-1px) rotate(0deg); }
+  60% { transform: translateY(1px) rotate(0deg); }
+  70%, 100% { transform: translateY(0) rotate(0deg); }
+}
+
+.animate-rocket-shake {
+  animation: rocket-shake 0.5s ease-in-out infinite;
+}
+
+/* Doom skull float */
+@keyframes skull-float {
+  0%, 100% { transform: translateY(0) rotate(-5deg); }
+  50% { transform: translateY(-10px) rotate(5deg); }
+}
+
+.animate-skull-float {
+  animation: skull-float 2s ease-in-out infinite;
+}

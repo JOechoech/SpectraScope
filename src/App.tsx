@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { HomeView, DetailView, SettingsView, SearchView, PortfolioView, SpectraScopeView } from '@/views';
+import { HomeView, DetailView, SettingsView, SearchView, PortfolioView, SpectraScopeView, DreamView } from '@/views';
 import { Navigation } from '@/components/layout';
 import { MarketStatusBar } from '@/components/ui';
 import type { ViewName } from '@/types';
@@ -101,6 +101,13 @@ export default function App() {
 
       {view === 'spectrascope' && (
         <SpectraScopeView
+          onSelectStock={handleSelectStock}
+          onBack={() => setView('watchlist')}
+        />
+      )}
+
+      {view === 'dream' && (
+        <DreamView
           onSelectStock={handleSelectStock}
           onBack={() => setView('watchlist')}
         />
