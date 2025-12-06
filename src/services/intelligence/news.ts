@@ -1,93 +1,51 @@
 /**
  * News Intelligence Service
  *
- * Fetches and analyzes news sentiment from NewsAPI.
- * Requires NewsAPI key.
+ * Fetches and analyzes news sentiment from Finnhub.
+ * Uses Finnhub API (no CORS issues, works in browser).
  */
 
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
-import { getStockNews, getNewsSentimentScore, type NewsArticle } from '@/services/api/newsapi';
+import { getCompanyNews, type FinnhubNews } from '@/services/api/finnhub';
 import type { NewsReport, NewsReportData, NewsHeadline } from '@/types/intelligence';
-
-// ═══════════════════════════════════════════════════════════════════════════
-// COMPANY NAME MAPPING
-// ═══════════════════════════════════════════════════════════════════════════
-
-const companyNames: Record<string, string> = {
-  AAPL: 'Apple',
-  MSFT: 'Microsoft',
-  GOOGL: 'Google Alphabet',
-  AMZN: 'Amazon',
-  NVDA: 'NVIDIA',
-  META: 'Meta Facebook',
-  TSLA: 'Tesla',
-  'BRK.B': 'Berkshire Hathaway',
-  JPM: 'JPMorgan Chase',
-  V: 'Visa',
-  JNJ: 'Johnson & Johnson',
-  WMT: 'Walmart',
-  PG: 'Procter & Gamble',
-  MA: 'Mastercard',
-  UNH: 'UnitedHealth',
-  HD: 'Home Depot',
-  DIS: 'Disney',
-  BAC: 'Bank of America',
-  XOM: 'Exxon Mobil',
-  NFLX: 'Netflix',
-  AMD: 'AMD Advanced Micro Devices',
-  INTC: 'Intel',
-  CRM: 'Salesforce',
-  ADBE: 'Adobe',
-  PYPL: 'PayPal',
-  COST: 'Costco',
-  PEP: 'PepsiCo',
-  KO: 'Coca-Cola',
-  NKE: 'Nike',
-  MCD: 'McDonald\'s',
-};
-
-function getCompanyName(symbol: string): string {
-  return companyNames[symbol] || symbol;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN GATHER FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Gather news intelligence from NewsAPI
+ * Gather news intelligence from Finnhub
  *
  * @param symbol - Stock symbol
- * @param companyName - Optional company name for better search results
+ * @param companyName - Optional company name (not used by Finnhub)
  * @returns News intelligence report or null if unavailable
  */
 export async function gatherNewsIntelligence(
   symbol: string,
-  companyName?: string
+  _companyName?: string
 ): Promise<NewsReport | null> {
   try {
-    const apiKey = useApiKeysStore.getState().getApiKey('newsapi');
+    // Use Finnhub API key (no CORS issues)
+    const apiKey = useApiKeysStore.getState().getApiKey('finnhub');
 
     if (!apiKey) {
-      console.warn('[News] No NewsAPI key configured');
+      console.warn('[News] No Finnhub API key configured');
       return null;
     }
 
-    const company = companyName || getCompanyName(symbol);
-
-    // Fetch news from NewsAPI
-    const articles = await getStockNews(symbol, company, apiKey);
+    // Fetch news from Finnhub
+    const articles = await getCompanyNews(symbol, apiKey);
 
     if (!articles || articles.length === 0) {
       console.warn(`[News] No news found for ${symbol}`);
       return createEmptyReport(symbol);
     }
 
-    // Process headlines
-    const headlines = processHeadlines(articles);
+    // Process headlines from Finnhub format
+    const headlines = processFinnhubHeadlines(articles);
 
-    // Calculate overall sentiment
-    const sentimentResult = getNewsSentimentScore(articles);
+    // Calculate overall sentiment from Finnhub articles
+    const sentimentResult = calculateFinnhubSentiment(articles);
     const overallSentiment: NewsReportData['overallSentiment'] =
       sentimentResult.label === 'bullish'
         ? 'bullish'
@@ -127,17 +85,41 @@ export async function gatherNewsIntelligence(
 // PROCESSING FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function processHeadlines(articles: NewsArticle[]): NewsHeadline[] {
+function processFinnhubHeadlines(articles: FinnhubNews[]): NewsHeadline[] {
   return articles
     .slice(0, 10) // Take top 10 most recent
     .map((article) => ({
-      title: article.title,
-      source: article.source.name,
+      title: article.headline,
+      source: article.source,
       url: article.url,
-      publishedAt: article.publishedAt,
+      publishedAt: new Date(article.datetime * 1000).toISOString(),
       sentiment: article.sentiment || 'neutral',
       relevance: 0.8,
     }));
+}
+
+function calculateFinnhubSentiment(articles: FinnhubNews[]): {
+  score: number;
+  label: 'bullish' | 'neutral' | 'bearish';
+  breakdown: { positive: number; neutral: number; negative: number };
+} {
+  if (articles.length === 0) {
+    return { score: 0, label: 'neutral', breakdown: { positive: 0, neutral: 0, negative: 0 } };
+  }
+
+  const breakdown = {
+    positive: articles.filter((a) => a.sentiment === 'positive').length,
+    neutral: articles.filter((a) => a.sentiment === 'neutral').length,
+    negative: articles.filter((a) => a.sentiment === 'negative').length,
+  };
+
+  const score = (breakdown.positive - breakdown.negative) / articles.length;
+
+  return {
+    score,
+    label: score > 0.2 ? 'bullish' : score < -0.2 ? 'bearish' : 'neutral',
+    breakdown,
+  };
 }
 
 function getTopSources(headlines: NewsHeadline[]): string[] {

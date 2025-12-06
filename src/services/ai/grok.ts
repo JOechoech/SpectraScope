@@ -53,7 +53,7 @@ export async function getXSentiment(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'grok-beta', // or 'grok-2' when available
+        model: 'grok-4-1-fast-reasoning',
         messages: [
           {
             role: 'system',

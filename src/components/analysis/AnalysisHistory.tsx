@@ -161,8 +161,8 @@ const HistoryItem = memo(function HistoryItem({
   const config = scenarioConfig[dominantScenario];
   const Icon = config.icon;
 
-  // Get dominant probability
-  const dominantProb = result[dominantScenario].probability;
+  // Get dominant probability with null check
+  const dominantProb = result?.[dominantScenario]?.probability ?? 0;
 
   return (
     <button
