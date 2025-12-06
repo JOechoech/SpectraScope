@@ -68,20 +68,13 @@ const requiredApis: ApiKeyConfig[] = [
 
 const marketDataApis: ApiKeyConfig[] = [
   {
-    key: 'alphavantage',
-    label: 'Alpha Vantage',
-    description: 'Stock prices, historical data & technical indicators',
-    icon: BarChart3,
-    placeholder: 'Your 16-character key',
-    freeLink: 'https://www.alphavantage.co/support/#api-key',
-  },
-  {
     key: 'polygon',
     label: 'Polygon.io',
-    description: 'Real-time quotes, options flow & greeks',
+    description: 'Real-time quotes, bulk loading, options flow & greeks',
     icon: TrendingUp,
     placeholder: 'Your Polygon API key',
     tier: 'premium',
+    freeLink: 'https://polygon.io/pricing',
   },
 ];
 

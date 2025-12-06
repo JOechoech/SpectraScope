@@ -14,7 +14,6 @@ import { Header } from '@/components/layout';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { searchTickers } from '@/services/api/polygon';
-import { searchSymbols } from '@/services/api/alphavantage';
 import { debounce } from '@/utils/debounce';
 
 interface SearchResult {
@@ -53,8 +52,7 @@ export const SearchView = memo(function SearchView({
 
   const { getApiKey } = useApiKeysStore();
   const polygonKey = getApiKey('polygon');
-  const alphaVantageKey = getApiKey('alphavantage');
-  const hasApiKey = !!(polygonKey || alphaVantageKey);
+  const hasApiKey = !!polygonKey;
 
   const { items: watchlistItems, addStock } = useWatchlistStore();
 
@@ -79,20 +77,10 @@ export const SearchView = memo(function SearchView({
       try {
         let searchResults: SearchResult[] = [];
 
-        // Try Polygon first (faster, no rate limit)
+        // Try Polygon (real-time search)
         if (polygonKey) {
           console.log('Searching with Polygon.io...');
           searchResults = await searchTickers(searchQuery, polygonKey);
-        }
-        // Fallback to Alpha Vantage
-        else if (alphaVantageKey) {
-          console.log('Searching with Alpha Vantage...');
-          const avResults = await searchSymbols(searchQuery, alphaVantageKey);
-          searchResults = avResults.map((r) => ({
-            symbol: r.symbol,
-            name: r.name,
-            type: r.type,
-          }));
         }
         // No API key - filter popular stocks
         else {
@@ -112,7 +100,7 @@ export const SearchView = memo(function SearchView({
         setIsLoading(false);
       }
     }, 300),
-    [polygonKey, alphaVantageKey]
+    [polygonKey]
   );
 
   // Trigger search when query changes

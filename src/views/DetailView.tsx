@@ -28,9 +28,8 @@ import { WarpAnimation } from '@/components/effects/WarpAnimation';
 import {
   getQuote,
   getDailyData,
-  getMockQuote,
-  getMockDailyData,
-} from '@/services/api/alphavantage';
+} from '@/services/marketData';
+import { getMockQuote, getMockDailyData } from '@/services/api/polygon';
 import { getStockNews, type NewsArticle } from '@/services/api/newsapi';
 import { synthesizeFromIntelligence } from '@/services/ai/anthropic';
 import { gatherIntelligence } from '@/services/intelligence';
@@ -82,7 +81,7 @@ export const DetailView = memo(function DetailView({
   const { addAnalysis, getLatestAnalysis } = useAnalysisStore();
   const { items: watchlistItems } = useWatchlistStore();
 
-  const alphaVantageKey = getApiKey('alphavantage');
+  const polygonKey = getApiKey('polygon');
   const anthropicKey = getApiKey('anthropic');
   const newsApiKey = getApiKey('newsapi');
 
@@ -124,18 +123,13 @@ export const DetailView = memo(function DetailView({
     setError(null);
 
     try {
-      if (alphaVantageKey) {
-        const [q, daily] = await Promise.all([
-          getQuote(symbol, alphaVantageKey),
-          getDailyData(symbol, alphaVantageKey, 'full'),
-        ]);
-        setQuote(q);
-        setPriceData(daily);
-      } else {
-        // Mock data
-        setQuote(getMockQuote(symbol));
-        setPriceData(getMockDailyData(symbol, 365));
-      }
+      // Use unified marketData service (Polygon or mock)
+      const [quoteResult, dailyResult] = await Promise.all([
+        getQuote(symbol),
+        getDailyData(symbol, 365),
+      ]);
+      setQuote(quoteResult.data);
+      setPriceData(dailyResult.data);
     } catch (err) {
       setError('Failed to load price data');
       console.error(err);
@@ -145,7 +139,7 @@ export const DetailView = memo(function DetailView({
     } finally {
       setIsLoadingPrice(false);
     }
-  }, [symbol, alphaVantageKey]);
+  }, [symbol]);
 
   const loadNews = useCallback(async () => {
     if (!newsApiKey) {
@@ -270,10 +264,10 @@ export const DetailView = memo(function DetailView({
 
       <div className="p-4 space-y-4">
         {/* API Key Warning */}
-        {!alphaVantageKey && (
+        {!polygonKey && (
           <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
             <p className="text-amber-400 text-sm">
-              Using mock data. Add Alpha Vantage API key in Settings for real
+              Using demo data. Add Polygon.io API key in Settings for real-time
               prices.
             </p>
           </div>
