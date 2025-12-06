@@ -1,8 +1,8 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { HomeView, DetailView, SettingsView, SearchView, PortfolioView, SpectraScopeView, DreamView } from '@/views';
 import { Navigation } from '@/components/layout';
 import { MarketStatusBar } from '@/components/ui';
-import { DreamEffects, ScopeEffects } from '@/components/effects';
+import { DreamEffects, ScopeEffects, SearchEffects } from '@/components/effects';
 import type { ViewName } from '@/types';
 
 // Theme type for each view
@@ -17,6 +17,16 @@ const viewThemeMap: Record<ViewName, ThemeType> = {
   settings: 'settings',
   detail: 'default',
   portfolio: 'home',
+};
+
+// Theme colors for iPhone status bar
+const themeColors: Record<ThemeType, string> = {
+  home: '#0d9488',      // teal-600
+  dream: '#7c3aed',     // violet-600
+  scope: '#db2777',     // pink-600
+  search: '#10b981',    // emerald-500
+  settings: '#1e293b',  // slate-800
+  default: '#000000',
 };
 
 // Get theme class for root container
@@ -34,6 +44,14 @@ const getThemeClass = (theme: ThemeType): string => {
       return 'theme-settings';
     default:
       return '';
+  }
+};
+
+// Update meta theme-color for iOS status bar
+const updateThemeColor = (color: string) => {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    meta.setAttribute('content', color);
   }
 };
 
@@ -72,11 +90,17 @@ export default function App() {
   const currentTheme = useMemo(() => viewThemeMap[view], [view]);
   const themeClass = useMemo(() => getThemeClass(currentTheme), [currentTheme]);
 
+  // Update iOS status bar color when theme changes
+  useEffect(() => {
+    updateThemeColor(themeColors[currentTheme]);
+  }, [currentTheme]);
+
   return (
     <div className={`font-sans antialiased min-h-screen bg-black transition-all duration-300 ${themeClass}`}>
       {/* Immersive Effects Layer */}
       {currentTheme === 'dream' && <DreamEffects />}
       {currentTheme === 'scope' && <ScopeEffects />}
+      {currentTheme === 'search' && <SearchEffects />}
       {/* Global Styles */}
       <style>{`
         @keyframes fadeIn {

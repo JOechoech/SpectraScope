@@ -42,12 +42,12 @@ export const ScopeEffects = memo(function ScopeEffects() {
               {/* Cloud shape with blur */}
               <defs>
                 <filter id={`scope-blur-${cloud.id}`} x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur in="SourceGraphic" stdDeviation="4" />
+                  <feGaussianBlur in="SourceGraphic" stdDeviation="5" />
                 </filter>
                 <linearGradient id={`scopeCloudGrad-${cloud.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="rgba(251, 146, 60, 0.35)" />
-                  <stop offset="50%" stopColor="rgba(249, 115, 22, 0.25)" />
-                  <stop offset="100%" stopColor="rgba(234, 88, 12, 0.15)" />
+                  <stop offset="0%" stopColor="rgba(251, 146, 60, 0.5)" />
+                  <stop offset="40%" stopColor="rgba(249, 115, 22, 0.4)" />
+                  <stop offset="100%" stopColor="rgba(234, 88, 12, 0.25)" />
                 </linearGradient>
               </defs>
               <ellipse cx="35" cy="35" rx="30" ry="18" fill={`url(#scopeCloudGrad-${cloud.id})`} filter={`url(#scope-blur-${cloud.id})`} />
