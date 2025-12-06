@@ -27,6 +27,8 @@ import {
   History,
   Clock,
   TrendingDown,
+  Check,
+  X,
 } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { ApiKeyInput, ActiveSourcesCard } from '@/components/settings';
@@ -228,6 +230,20 @@ export const SettingsView = memo(function SettingsView({
         showBack
         onBack={onBack}
       />
+
+      {/* Quick API Status Bar */}
+      <div className="px-5 py-3 bg-slate-900/50 border-b border-slate-800/50">
+        <div className="flex items-center justify-between">
+          <span className="text-slate-500 text-xs font-medium">API STATUS</span>
+          <div className="flex items-center gap-3">
+            <ApiStatusBadge name="Polygon" configured={!!getApiKey('polygon')} />
+            <ApiStatusBadge name="Claude" configured={!!getApiKey('anthropic')} />
+            <ApiStatusBadge name="Gemini" configured={!!getApiKey('gemini')} />
+            <ApiStatusBadge name="Grok" configured={!!getApiKey('grok')} />
+            <ApiStatusBadge name="OpenAI" configured={!!getApiKey('openai')} />
+          </div>
+        </div>
+      </div>
 
       <div className="px-5 py-6 space-y-6">
         {/* Active Sources Overview */}
@@ -559,6 +575,34 @@ const Section = memo(function Section({
         </div>
       </div>
       <div className="space-y-3">{children}</div>
+    </div>
+  );
+});
+
+// API Status Badge Component
+interface ApiStatusBadgeProps {
+  name: string;
+  configured: boolean;
+}
+
+const ApiStatusBadge = memo(function ApiStatusBadge({
+  name,
+  configured,
+}: ApiStatusBadgeProps) {
+  return (
+    <div className="flex items-center gap-1">
+      {configured ? (
+        <Check size={12} className="text-emerald-400" />
+      ) : (
+        <X size={12} className="text-slate-600" />
+      )}
+      <span
+        className={`text-xs ${
+          configured ? 'text-emerald-400' : 'text-slate-600'
+        }`}
+      >
+        {name}
+      </span>
     </div>
   );
 });
