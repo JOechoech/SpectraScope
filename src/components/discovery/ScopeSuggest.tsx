@@ -242,7 +242,7 @@ export const ScopeSuggest = memo(function ScopeSuggest({
   const isInWatchlist = (symbol: string) =>
     watchlistItems.some((item) => item.symbol === symbol);
 
-  const handleAddToWatchlist = (stock: { symbol: string; name: string }) => {
+  const handleAddToWatchlist = (stock: { symbol: string; name: string; signal?: 'bullish' | 'bearish' | 'neutral' }) => {
     if (!isInWatchlist(stock.symbol) && selectedSector) {
       addStock(
         {
@@ -255,6 +255,8 @@ export const ScopeSuggest = memo(function ScopeSuggest({
         {
           scopedFrom: selectedSector,
           scopedPrice: 0, // Will be fetched when quote loads
+          scopedSentiment: stock.signal || 'neutral',
+          scopedSource: scanMode === 'grok' ? 'grok' : 'full-ai',
         }
       );
       setRecentlyAdded((prev) => [...prev, stock.symbol]);
@@ -278,6 +280,8 @@ export const ScopeSuggest = memo(function ScopeSuggest({
           {
             scopedFrom: selectedSector,
             scopedPrice: 0,
+            scopedSentiment: result.signal || 'neutral',
+            scopedSource: scanMode === 'grok' ? 'grok' : 'full-ai',
           }
         );
       }
@@ -647,7 +651,7 @@ Only return valid JSON.`,
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleAddToWatchlist({ symbol: result.symbol, name: result.name });
+                      handleAddToWatchlist({ symbol: result.symbol, name: result.name, signal: result.signal });
                     }}
                     disabled={inWatchlist || justAdded}
                     className={`p-1.5 rounded-lg transition-all ${

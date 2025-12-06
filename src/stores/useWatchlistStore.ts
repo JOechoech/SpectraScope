@@ -13,6 +13,8 @@ export interface Holding {
 interface ScopedStockInfo {
   scopedFrom: string; // Sector ID
   scopedPrice?: number; // Price when scoped
+  scopedSentiment?: 'bullish' | 'bearish' | 'neutral'; // Sentiment at scope time
+  scopedSource?: 'grok' | 'full-ai'; // Which scan found it
 }
 
 interface WatchlistState {
@@ -126,6 +128,8 @@ export const useWatchlistStore = create<WatchlistState>()(
                   scopedFrom: scopedInfo.scopedFrom,
                   scopedAt: now,
                   scopedPrice: scopedInfo.scopedPrice,
+                  scopedSentiment: scopedInfo.scopedSentiment,
+                  scopedSource: scopedInfo.scopedSource,
                 }),
               },
             ],
