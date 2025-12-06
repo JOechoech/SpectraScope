@@ -145,7 +145,7 @@ export const SettingsView = memo(function SettingsView({
 
     if (!currentPrice || !priceAtAnalysis) return null;
 
-    const result = entry.result;
+    const result = entry.result as any;
     const scenarios = result.scenarios || result;
     if (!scenarios?.bull?.priceTarget) return null;
 

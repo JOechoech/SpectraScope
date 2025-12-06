@@ -513,21 +513,25 @@ export const HomeView = memo(function HomeView({
                     <div className="flex items-center gap-2">
                       <span className="text-white font-medium text-sm w-12">{symbol}</span>
                       <span className="text-slate-500 text-xs">{holding.shares}</span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {/* Sparkline - right aligned like watchlist */}
                       {data?.sparkline && data.sparkline.length > 1 && (
                         <MiniSparkline data={data.sparkline} width={40} height={16} isUp={isUp} />
                       )}
-                    </div>
 
-                    {quote ? (
-                      <div className="text-right">
-                        <span className="text-white text-sm block">${formatPrice(value)}</span>
-                        <span className={`text-[10px] ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {dayChange >= 0 ? '+' : ''}${dayChange.toFixed(2)}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-slate-500 text-sm">--</span>
-                    )}
+                      {quote ? (
+                        <div className="text-right min-w-[70px]">
+                          <span className="text-white text-sm block">${formatPrice(value)}</span>
+                          <span className={`text-[10px] ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {dayChange >= 0 ? '+' : ''}${dayChange.toFixed(2)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500 text-sm">--</span>
+                      )}
+                    </div>
                   </div>
                 );
               })}
