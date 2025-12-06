@@ -13,6 +13,7 @@ import { RefreshCw, Settings, Minus } from 'lucide-react';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useQuoteCacheStore } from '@/stores/useQuoteCacheStore';
+import { useAnalysisStore } from '@/stores/useAnalysisStore';
 import * as marketData from '@/services/marketData';
 import {
   calculateRSI,
@@ -91,6 +92,27 @@ function formatScopedDate(isoDate: string): string {
   return `${day}.${month}.${year}`;
 }
 
+// Format time ago for analysis date
+function formatAnalysisAge(isoDate: string): string {
+  const date = new Date(isoDate);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffWeeks = Math.floor(diffDays / 7);
+  const diffMonths = Math.floor(diffDays / 30);
+
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffWeeks === 1) return '1 week ago';
+  if (diffWeeks < 4) return `${diffWeeks} weeks ago`;
+  if (diffMonths === 1) return '1 month ago';
+  return `${diffMonths} months ago`;
+}
+
 /**
  * Format price with appropriate decimal places
  * - Under $1: 3 decimals ($0.823)
@@ -166,6 +188,7 @@ export const HomeView = memo(function HomeView({
   const cachedQuotes = useQuoteCacheStore((s) => s.quotes);
   const cachedDataSource = useQuoteCacheStore((s) => s.dataSource);
   const setQuotesCache = useQuoteCacheStore((s) => s.setQuotes);
+  const { getLatestAnalysis } = useAnalysisStore();
 
   const [quotes, setQuotes] = useState<Map<string, StockQuote>>(new Map());
   const [stockData, setStockData] = useState<Record<string, StockData>>({});
@@ -547,6 +570,10 @@ export const HomeView = memo(function HomeView({
                 ? getScopePerformance(scopedInfo.price, quote.price)
                 : null;
 
+              // Get latest analysis for this stock
+              const latestAnalysis = getLatestAnalysis(stock.symbol);
+              const analysisAge = latestAnalysis ? formatAnalysisAge(latestAnalysis.timestamp) : null;
+
               return (
                 <div
                   key={stock.symbol}
@@ -631,6 +658,31 @@ export const HomeView = memo(function HomeView({
                         {scopePerf && (
                           <span className={scopePerf.percentChange >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                             {scopePerf.percentChange >= 0 ? '📈' : '📉'} {scopePerf.percentChange >= 0 ? '+' : ''}{scopePerf.percentChange.toFixed(1)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Last Analysis - Show analysis status */}
+                  {(analysisAge || !scopedInfo) && (
+                    <div
+                      className={`${scopedInfo ? '' : 'mt-1.5 pt-1.5 border-t border-slate-700/30'} cursor-pointer`}
+                      onClick={() => onSelectStock(stock.symbol)}
+                    >
+                      <div className="flex items-center text-[10px]">
+                        {analysisAge ? (
+                          <span className="text-slate-400 flex items-center gap-1.5">
+                            <span>📊</span>
+                            <span>Analysis: {analysisAge}</span>
+                            {latestAnalysis?.dominantScenario === 'bull' && <span className="text-emerald-400">• Bull</span>}
+                            {latestAnalysis?.dominantScenario === 'bear' && <span className="text-rose-400">• Bear</span>}
+                            {latestAnalysis?.dominantScenario === 'base' && <span className="text-blue-400">• Base</span>}
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 flex items-center gap-1.5">
+                            <span>⚪</span>
+                            <span>Not analyzed yet</span>
                           </span>
                         )}
                       </div>
