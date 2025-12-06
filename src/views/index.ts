@@ -5,3 +5,4 @@ export { SettingsView } from './SettingsView';
 export { SearchView } from './SearchView';
 export { PortfolioView } from './PortfolioView';
 export { SpectraScopeView } from './SpectraScopeView';
+export { DreamView } from './DreamView';
