@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Home, Search, Settings, Telescope, Moon } from 'lucide-react';
 import type { ViewName } from '@/types';
 
@@ -11,19 +11,75 @@ interface NavItem {
   id: ViewName;
   label: string;
   icon: typeof Home;
-  highlight?: 'scope' | 'dream';
+  theme: 'home' | 'dream' | 'scope' | 'search' | 'settings';
 }
 
 const navItems: NavItem[] = [
-  { id: 'watchlist', label: 'Home', icon: Home },
-  { id: 'search', label: 'Search', icon: Search },
-  { id: 'spectrascope', label: 'Scope', icon: Telescope, highlight: 'scope' },
-  { id: 'dream', label: 'Dream', icon: Moon, highlight: 'dream' },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'watchlist', label: 'Home', icon: Home, theme: 'home' },
+  { id: 'dream', label: 'Dream', icon: Moon, theme: 'dream' },
+  { id: 'spectrascope', label: 'Scope', icon: Telescope, theme: 'scope' },
+  { id: 'search', label: 'Search', icon: Search, theme: 'search' },
+  { id: 'settings', label: 'Settings', icon: Settings, theme: 'settings' },
 ];
 
+// Theme color configurations
+const themeColors: Record<NavItem['theme'], {
+  active: string;
+  inactive: string;
+  activeBg: string;
+  inactiveBg: string;
+}> = {
+  home: {
+    active: 'text-cyan-400',
+    inactive: 'text-cyan-400/60 hover:text-cyan-300',
+    activeBg: 'bg-gradient-to-br from-blue-500/25 to-cyan-500/20 ring-2 ring-cyan-500/30',
+    inactiveBg: 'bg-cyan-500/10',
+  },
+  dream: {
+    active: 'text-violet-400',
+    inactive: 'text-violet-400/60 hover:text-violet-300',
+    activeBg: 'bg-gradient-to-br from-violet-500/30 to-purple-500/20 ring-2 ring-violet-500/30',
+    inactiveBg: 'bg-violet-500/10',
+  },
+  scope: {
+    active: 'text-orange-400',
+    inactive: 'text-orange-400/60 hover:text-orange-300',
+    activeBg: 'bg-gradient-to-br from-pink-500/25 to-orange-500/20 ring-2 ring-orange-500/30',
+    inactiveBg: 'bg-orange-500/10',
+  },
+  search: {
+    active: 'text-emerald-400',
+    inactive: 'text-emerald-400/60 hover:text-emerald-300',
+    activeBg: 'bg-gradient-to-br from-green-500/25 to-cyan-500/20 ring-2 ring-emerald-500/30',
+    inactiveBg: 'bg-emerald-500/10',
+  },
+  settings: {
+    active: 'text-slate-300',
+    inactive: 'text-slate-500 hover:text-slate-400',
+    activeBg: 'bg-slate-700/30 ring-2 ring-slate-600/30',
+    inactiveBg: 'bg-slate-700/10',
+  },
+};
+
+// Get navbar background class based on active theme
+const getNavbarBgClass = (activeTheme: NavItem['theme']) => {
+  switch (activeTheme) {
+    case 'dream':
+      return 'bg-gradient-to-t from-black/95 to-violet-950/80 backdrop-blur-lg border-t border-violet-800/30';
+    case 'scope':
+      return 'bg-gradient-to-t from-black/95 to-rose-950/60 backdrop-blur-lg border-t border-orange-800/30';
+    case 'search':
+      return 'bg-gradient-to-t from-black/95 to-emerald-950/50 backdrop-blur-lg border-t border-emerald-800/30';
+    case 'home':
+      return 'bg-gradient-to-t from-black/95 to-cyan-950/40 backdrop-blur-lg border-t border-cyan-800/30';
+    case 'settings':
+    default:
+      return 'bg-black/95 backdrop-blur-lg border-t border-slate-800/50';
+  }
+};
+
 /**
- * Bottom navigation bar - Sleek, minimal design with 5 tabs
+ * Bottom navigation bar - Immersive themed design with 5 tabs
  */
 export const Navigation = memo(function Navigation({
   currentView,
@@ -34,83 +90,22 @@ export const Navigation = memo(function Navigation({
     return null;
   }
 
+  // Get the active theme based on current view
+  const activeTheme = useMemo(() => {
+    const activeItem = navItems.find(item => item.id === currentView);
+    return activeItem?.theme || 'home';
+  }, [currentView]);
+
   return (
-    <nav className="flex items-center justify-around bg-black/95 backdrop-blur-lg border-t border-slate-800/50 px-1 py-1 safe-bottom">
+    <nav className={`
+      flex items-center justify-around px-1 py-1 safe-bottom
+      transition-all duration-300
+      ${getNavbarBgClass(activeTheme)}
+    `}>
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = currentView === item.id;
-
-        // Special styling for Scope (purple)
-        if (item.highlight === 'scope') {
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={`
-                flex flex-col items-center justify-center py-2 px-3 rounded-xl
-                transition-all duration-200 relative
-                ${isActive
-                  ? 'text-purple-400'
-                  : 'text-purple-400/70 hover:text-purple-300'
-                }
-              `}
-            >
-              <div className={`
-                p-2 rounded-xl transition-all
-                ${isActive
-                  ? 'bg-purple-500/20 ring-2 ring-purple-500/30'
-                  : 'bg-purple-500/10'
-                }
-              `}>
-                <Icon
-                  size={20}
-                  strokeWidth={isActive ? 2.5 : 1.5}
-                />
-              </div>
-              <span className={`text-[10px] mt-0.5 font-medium ${
-                isActive ? 'opacity-100' : 'opacity-70'
-              }`}>
-                {item.label}
-              </span>
-            </button>
-          );
-        }
-
-        // Special styling for Dream (violet gradient)
-        if (item.highlight === 'dream') {
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={`
-                flex flex-col items-center justify-center py-2 px-3 rounded-xl
-                transition-all duration-200 relative
-                ${isActive
-                  ? 'text-violet-400'
-                  : 'text-violet-400/70 hover:text-violet-300'
-                }
-              `}
-            >
-              <div className={`
-                p-2 rounded-xl transition-all
-                ${isActive
-                  ? 'bg-gradient-to-br from-violet-500/30 to-purple-500/20 ring-2 ring-violet-500/30'
-                  : 'bg-violet-500/10'
-                }
-              `}>
-                <Icon
-                  size={20}
-                  strokeWidth={isActive ? 2.5 : 1.5}
-                />
-              </div>
-              <span className={`text-[10px] mt-0.5 font-medium ${
-                isActive ? 'opacity-100' : 'opacity-70'
-              }`}>
-                {item.label}
-              </span>
-            </button>
-          );
-        }
+        const colors = themeColors[item.theme];
 
         return (
           <button
@@ -118,17 +113,19 @@ export const Navigation = memo(function Navigation({
             onClick={() => onNavigate(item.id)}
             className={`
               flex flex-col items-center justify-center py-2 px-3 rounded-xl
-              transition-all duration-200
-              ${isActive
-                ? 'text-blue-400'
-                : 'text-slate-500 hover:text-slate-300'
-              }
+              transition-all duration-200 relative
+              ${isActive ? colors.active : colors.inactive}
             `}
           >
-            <Icon
-              size={20}
-              strokeWidth={isActive ? 2.5 : 1.5}
-            />
+            <div className={`
+              p-2 rounded-xl transition-all duration-200
+              ${isActive ? colors.activeBg : colors.inactiveBg}
+            `}>
+              <Icon
+                size={20}
+                strokeWidth={isActive ? 2.5 : 1.5}
+              />
+            </div>
             <span className={`text-[10px] mt-0.5 font-medium ${
               isActive ? 'opacity-100' : 'opacity-70'
             }`}>
