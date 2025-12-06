@@ -103,21 +103,41 @@ export const DetailView = memo(function DetailView({
     COMPANY_NAMES[symbol] ||
     symbol;
 
-  // Load price data on mount
+  // Check if analysis is recent (within 24 hours)
+  const isAnalysisRecent = (timestamp: string): boolean => {
+    const analysisTime = new Date(timestamp).getTime();
+    const now = Date.now();
+    const hoursDiff = (now - analysisTime) / (1000 * 60 * 60);
+    return hoursDiff < 24;
+  };
+
+  // Load price data on mount and check for cached analysis
   useEffect(() => {
     loadPriceData();
 
     // Check for existing analysis
     const existing = getLatestAnalysis(symbol);
-    if (existing?.result) {
+    if (existing?.result && isAnalysisRecent(existing.timestamp)) {
       // Convert existing analysis to our format
+      const result = existing.result as any;
       setAnalysis({
-        scenarios: existing.result as any,
-        confidence: 75,
-        availableSources: ['technical-analysis'],
-        missingSources: [],
-        intelligenceReports: [],
+        scenarios: result.scenarios || result,
+        confidence: result.confidence || 75,
+        bottomLine: result.bottomLine,
+        availableSources: result.availableSources || ['technical-analysis'],
+        missingSources: result.missingSources || [],
+        intelligenceReports: result.intelligenceReports || [],
+        overallSentiment: result.overallSentiment,
+        overallScore: result.overallScore,
+        sourceAssessments: result.sourceAssessments,
+        tokenUsage: existing.tokenUsage ? {
+          input: existing.tokenUsage.input,
+          output: existing.tokenUsage.output,
+          cost: existing.cost,
+        } : undefined,
       });
+      // Skip to results phase since we have cached data
+      setAnalysisPhase('results');
     }
   }, [symbol]);
 
@@ -185,12 +205,12 @@ export const DetailView = memo(function DetailView({
           summary: 'Patterns analyzed',
         },
         {
-          id: 'news',
-          name: 'News Sentiment',
-          icon: '📰',
+          id: 'openai',
+          name: 'OpenAI News',
+          icon: '🤖',
           delivered: intelligence.availableSources.includes('news-sentiment'),
-          tokensUsed: intelligence.availableSources.includes('news-sentiment') ? 150 : 0,
-          summary: intelligence.availableSources.includes('news-sentiment') ? 'Headlines scanned' : undefined,
+          tokensUsed: intelligence.availableSources.includes('news-sentiment') ? 250 : 0,
+          summary: intelligence.availableSources.includes('news-sentiment') ? 'Latest news scanned' : undefined,
           error: !intelligence.availableSources.includes('news-sentiment') ? 'No API key' : undefined,
         },
         {
@@ -239,7 +259,7 @@ export const DetailView = memo(function DetailView({
 
       setAnalysis(analysisResult);
 
-      // Save to store
+      // Save to store with full data for restoration
       addAnalysis(symbol, {
         id: crypto.randomUUID(),
         symbol,
@@ -253,7 +273,18 @@ export const DetailView = memo(function DetailView({
           aggregateScore: {} as any,
           newsHeadlines: [],
         },
-        result: result as any,
+        result: {
+          ...result,
+          scenarios: result.scenarios,
+          confidence: result.confidence,
+          bottomLine: result.bottomLine,
+          availableSources: intelligence.availableSources,
+          missingSources: intelligence.missingSources,
+          intelligenceReports: intelligence.reports,
+          overallSentiment: result.overallSentiment,
+          overallScore: result.overallScore,
+          sourceAssessments: result.sourceAssessments,
+        } as any,
         tokenUsage: result.tokenUsage
           ? { input: result.tokenUsage.input, output: result.tokenUsage.output, total: result.tokenUsage.input + result.tokenUsage.output }
           : { input: 0, output: 0, total: 0 },
@@ -354,15 +385,43 @@ export const DetailView = memo(function DetailView({
 
         {/* News is now analyzed via OpenAI during Scope Analysis */}
 
-        {/* Scope Button */}
-        <ScopeButton
-          symbol={symbol}
-          onAnalyze={runAnalysis}
-          isLoading={analysisPhase === 'gathering'}
-          estimatedCost={{ min: 0.01, max: 0.04, avg: 0.025 }}
-          hasApiKey={!!anthropicKey}
-          disabled={isLoadingPrice || analysisPhase !== 'idle'}
-        />
+        {/* Scope Button - Show refresh option if cached analysis exists */}
+        {analysisPhase === 'results' && analysis ? (
+          <div className="space-y-3">
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400">✓</span>
+                  <span className="text-emerald-400 text-sm font-medium">
+                    Analysis loaded from cache
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    setAnalysisPhase('idle');
+                    setAnalysis(null);
+                  }}
+                  className="px-3 py-1.5 bg-slate-800/50 text-slate-300 rounded-lg text-sm hover:bg-slate-700/50 transition-colors"
+                >
+                  Refresh Analysis
+                </button>
+              </div>
+              <p className="text-slate-500 text-xs mt-2">
+                Cached analyses save you money. Click Refresh to run a new analysis (~$0.02).
+              </p>
+            </div>
+          </div>
+        ) : (
+          <ScopeButton
+            symbol={symbol}
+            onAnalyze={runAnalysis}
+            isLoading={analysisPhase === 'gathering'}
+            estimatedCost={{ min: 0.01, max: 0.04, avg: 0.025 }}
+            hasApiKey={!!anthropicKey}
+            disabled={isLoadingPrice || (analysisPhase !== 'idle' && analysisPhase !== 'results')}
+            lastAnalysisTime={getLatestAnalysis(symbol)?.timestamp}
+          />
+        )}
 
         {/* Error Display */}
         {error && (
