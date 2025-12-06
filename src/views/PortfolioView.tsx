@@ -45,7 +45,7 @@ export const PortfolioView = memo(function PortfolioView({
   const [editingSymbol, setEditingSymbol] = useState<string | null>(null);
   const [editShares, setEditShares] = useState('');
 
-  // Calculate portfolio metrics
+  // Calculate portfolio metrics - READ DIRECTLY FROM HOLDINGS!
   const portfolio = useMemo(() => {
     let totalValue = 0;
     let totalCost = 0;
@@ -63,36 +63,44 @@ export const PortfolioView = memo(function PortfolioView({
       profitLossPercent?: number;
     }> = [];
 
-    watchlistItems.forEach((item) => {
-      const quote = quotes[item.symbol];
-      const holding = holdings[item.symbol];
+    // FIX: Iterate directly over holdings, NOT watchlistItems!
+    // This ensures stocks like AMD show up even if not in default watchlist
+    Object.values(holdings).forEach((holding) => {
+      if (holding.shares <= 0) return; // Skip zero shares
 
-      if (quote && holding && holding.shares > 0) {
-        const value = holding.shares * quote.price;
-        totalValue += value;
+      const symbol = holding.symbol.toUpperCase();
+      const quote = quotes[symbol];
 
-        if (holding.avgCost) {
-          totalCost += holding.shares * holding.avgCost;
-        }
+      // Find name from watchlist or use lookup table
+      const watchlistItem = watchlistItems.find((w) => w.symbol === symbol);
+      const name = watchlistItem?.name || COMPANY_NAMES[symbol] || symbol;
 
-        positions.push({
-          symbol: item.symbol,
-          name: item.name || COMPANY_NAMES[item.symbol] || item.symbol,
-          shares: holding.shares,
-          price: quote.price,
-          value,
-          change: quote.change,
-          changePercent: quote.changePercent,
-          weight: 0, // Calculate after
-          costBasis: holding.avgCost,
-          profitLoss: holding.avgCost
-            ? value - holding.shares * holding.avgCost
-            : undefined,
-          profitLossPercent: holding.avgCost
-            ? ((quote.price - holding.avgCost) / holding.avgCost) * 100
-            : undefined,
-        });
+      // Calculate values - use 0 if no quote available
+      const price = quote?.price || 0;
+      const value = holding.shares * price;
+      totalValue += value;
+
+      if (holding.avgCost) {
+        totalCost += holding.shares * holding.avgCost;
       }
+
+      positions.push({
+        symbol,
+        name,
+        shares: holding.shares,
+        price,
+        value,
+        change: quote?.change || 0,
+        changePercent: quote?.changePercent || 0,
+        weight: 0, // Calculate after
+        costBasis: holding.avgCost,
+        profitLoss: holding.avgCost
+          ? value - holding.shares * holding.avgCost
+          : undefined,
+        profitLossPercent: holding.avgCost && price > 0
+          ? ((price - holding.avgCost) / holding.avgCost) * 100
+          : undefined,
+      });
     });
 
     // Calculate weights
