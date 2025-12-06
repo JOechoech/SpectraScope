@@ -1,73 +1,19 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { HomeView, DetailView, SettingsView, SearchView, PortfolioView, SpectraScopeView, DreamView } from '@/views';
 import { Navigation } from '@/components/layout';
 import { MarketStatusBar } from '@/components/ui';
-import { DreamEffects, ScopeEffects, SearchEffects } from '@/components/effects';
+import { HomeEffects, DreamEffects, ScopeEffects } from '@/components/effects';
 import type { ViewName } from '@/types';
-
-// Theme type for each view
-type ThemeType = 'home' | 'dream' | 'scope' | 'search' | 'settings' | 'default';
-
-// Map views to their themes
-const viewThemeMap: Record<ViewName, ThemeType> = {
-  watchlist: 'home',
-  dream: 'dream',
-  spectrascope: 'scope',
-  search: 'search',
-  settings: 'settings',
-  detail: 'default',
-  portfolio: 'home',
-};
-
-// Theme colors for iPhone status bar and safe areas
-const themeColors: Record<ThemeType, string> = {
-  home: '#0d9488',      // teal-600
-  dream: '#7c3aed',     // violet-600
-  scope: '#ea580c',     // orange-600 (matches header!)
-  search: '#10b981',    // emerald-500
-  settings: '#1e293b',  // slate-800
-  default: '#000000',
-};
-
-// Get theme class for root container
-const getThemeClass = (theme: ThemeType): string => {
-  switch (theme) {
-    case 'dream':
-      return 'theme-dream';
-    case 'scope':
-      return 'theme-scope';
-    case 'search':
-      return 'theme-search';
-    case 'home':
-      return 'theme-home';
-    case 'settings':
-      return 'theme-settings';
-    default:
-      return '';
-  }
-};
-
-// Update meta theme-color for iOS status bar and CSS variable
-const updateThemeColor = (color: string) => {
-  // Update or create meta tag for native status bar
-  let meta = document.querySelector('meta[name="theme-color"]');
-  if (!meta) {
-    meta = document.createElement('meta');
-    meta.setAttribute('name', 'theme-color');
-    document.head.appendChild(meta);
-  }
-  meta.setAttribute('content', color);
-
-  // Set CSS variable for safe-area backgrounds
-  document.documentElement.style.setProperty('--theme-color', color);
-
-  // CRITICAL: Set html background color - this is what shows through transparent status bar
-  document.documentElement.style.backgroundColor = color;
-};
 
 /**
  * SpectraScope - Main App Component
- * Handles view navigation and global app state
+ *
+ * All black background with subtle themed effects per tab:
+ * - Home: Teal/green nebula wisps
+ * - Dream: Violet rain drops
+ * - Scope: Starfield with twinkling stars
+ * - Search: Pure black (clean)
+ * - Settings: Pure black (clean)
  */
 export default function App() {
   const [view, setView] = useState<ViewName>('watchlist');
@@ -96,21 +42,14 @@ export default function App() {
     setView(newView);
   }, []);
 
-  // Get the current theme based on view
-  const currentTheme = useMemo(() => viewThemeMap[view], [view]);
-  const themeClass = useMemo(() => getThemeClass(currentTheme), [currentTheme]);
-
-  // Update iOS status bar color when theme changes
-  useEffect(() => {
-    updateThemeColor(themeColors[currentTheme]);
-  }, [currentTheme]);
-
   return (
-    <div className={`font-sans antialiased min-h-screen bg-black transition-all duration-300 ${themeClass}`}>
-      {/* Immersive Effects Layer */}
-      {currentTheme === 'dream' && <DreamEffects />}
-      {currentTheme === 'scope' && <ScopeEffects />}
-      {currentTheme === 'search' && <SearchEffects />}
+    <div className="font-sans antialiased min-h-screen bg-black">
+      {/* Subtle Themed Effects Layer */}
+      {view === 'watchlist' && <HomeEffects />}
+      {view === 'dream' && <DreamEffects />}
+      {view === 'spectrascope' && <ScopeEffects />}
+      {/* Search and Settings: pure black, no effects */}
+
       {/* Global Styles */}
       <style>{`
         @keyframes fadeIn {
@@ -189,7 +128,7 @@ export default function App() {
 
       {/* Fixed Bottom - Status + Nav combined */}
       {view !== 'detail' && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-black">
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-black border-t border-white/10">
           {view !== 'settings' && <MarketStatusBar />}
           <Navigation currentView={view} onNavigate={handleNavigate} />
         </div>
