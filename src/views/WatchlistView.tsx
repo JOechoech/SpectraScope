@@ -408,6 +408,7 @@ export const WatchlistView = memo(function WatchlistView({
               scopedFrom={watchlistItem?.scopedFrom}
               scopedAt={watchlistItem?.scopedAt}
               scopedPrice={watchlistItem?.scopedPrice}
+              scopedSentiment={watchlistItem?.scopedSentiment}
               onClick={() => onSelectStock(symbol)}
             />
           );

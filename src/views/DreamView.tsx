@@ -27,8 +27,8 @@ import {
   Plus,
   Trash2,
   Save,
-  X,
   Archive,
+  X,
 } from 'lucide-react';
 import { Header } from '@/components/layout';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
@@ -181,7 +181,7 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
   const [moonProjections, setMoonProjections] = useState<PortfolioProjection[]>([]);
   const [doomProjections, setDoomProjections] = useState<PortfolioProjection[]>([]);
 
-  // Archive modal state
+  // Dream archive state
   const [showDreamArchive, setShowDreamArchive] = useState(false);
   const [selectedDream, setSelectedDream] = useState<SavedDream | null>(null);
 
@@ -792,26 +792,150 @@ export const DreamView = memo(function DreamView({ onBack }: DreamViewProps) {
             )}
           </div>
           <div className="space-y-2">
-            {savedDreams.slice(0, 3).map((dream) => (
+            {savedDreams.slice(0, 5).map((dream) => (
               <button
                 key={dream.id}
                 onClick={() => setSelectedDream(dream)}
-                className="w-full bg-slate-900/50 border border-slate-800/50 rounded-xl p-3 text-left hover:bg-slate-800/50 hover:border-violet-500/30 transition-all"
+                className="w-full bg-slate-900/50 border border-slate-800/50 rounded-xl p-3 text-left hover:bg-slate-800/50 hover:border-violet-500/30 transition-all group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-medium truncate">{dream.title}</p>
                     <p className="text-slate-500 text-xs truncate">{dream.summary}</p>
                   </div>
-                  <div className="flex items-center gap-2 ml-3">
+                  <div className="flex items-center gap-2 ml-2">
                     <span className="text-slate-600 text-xs whitespace-nowrap">
                       {formatDate(dream.timestamp)}
                     </span>
-                    <ChevronRight className="w-4 h-4 text-slate-600" />
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </div>
               </button>
             ))}
+          </div>
+          {/* Archive Button */}
+          {savedDreams.length > 5 && (
+            <button
+              onClick={() => setShowDreamArchive(true)}
+              className="w-full mt-3 py-3 text-slate-400 border border-slate-700 rounded-xl hover:bg-slate-800/50 transition-colors flex items-center justify-center gap-2"
+            >
+              <Archive className="w-4 h-4" />
+              View Archive ({savedDreams.length - 5} more)
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Dream Detail Modal */}
+      {selectedDream && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800">
+              <h3 className="text-white font-semibold">{selectedDream.title}</h3>
+              <button
+                onClick={() => setSelectedDream(null)}
+                className="p-2 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4">
+              <p className="text-slate-400 text-sm mb-2">{selectedDream.summary}</p>
+              <p className="text-slate-500 text-xs mb-4">
+                {formatDate(selectedDream.timestamp)}
+              </p>
+              {/* Dream type indicator */}
+              <div className="flex items-center gap-2 mb-4">
+                <span className={`text-xs px-2 py-1 rounded ${
+                  selectedDream.type === 'backtest' ? 'bg-purple-500/20 text-purple-400' :
+                  selectedDream.type === 'forecast' ? 'bg-blue-500/20 text-blue-400' :
+                  selectedDream.type === 'moon' ? 'bg-amber-500/20 text-amber-400' :
+                  'bg-rose-500/20 text-rose-400'
+                }`}>
+                  {selectedDream.type === 'backtest' ? 'Backtest' :
+                   selectedDream.type === 'forecast' ? 'Forecast' :
+                   selectedDream.type === 'moon' ? 'Moon Mode' : 'Doom Mode'}
+                </span>
+              </div>
+              {/* Show data based on type */}
+              {selectedDream.type === 'backtest' && (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Investment</span>
+                    <span className="text-white">${(selectedDream.data as BacktestResult).investmentAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Current Value</span>
+                    <span className="text-emerald-400">${(selectedDream.data as BacktestResult).currentValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Total Return</span>
+                    <span className={`${(selectedDream.data as BacktestResult).profitPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {(selectedDream.data as BacktestResult).profitPercent >= 0 ? '+' : ''}{(selectedDream.data as BacktestResult).profitPercent.toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              )}
+              {selectedDream.type === 'forecast' && (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Target Price</span>
+                    <span className="text-white">${(selectedDream.data as ForecastResult).targetPrice}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Potential Profit</span>
+                    <span className="text-emerald-400">${(selectedDream.data as ForecastResult).potentialProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </div>
+                </div>
+              )}
+              {(selectedDream.type === 'moon' || selectedDream.type === 'doom') && (
+                <div className="space-y-2 text-sm">
+                  <p className="text-slate-400">Portfolio projection with {(selectedDream.data as PortfolioProjection[]).length} stocks</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dream Archive Modal */}
+      {showDreamArchive && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-slate-800">
+              <h3 className="text-white font-semibold flex items-center gap-2">
+                <Archive className="w-5 h-5 text-slate-400" />
+                Dream Archive
+              </h3>
+              <button
+                onClick={() => setShowDreamArchive(false)}
+                className="p-2 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              {savedDreams.slice(5).map((dream) => (
+                <button
+                  key={dream.id}
+                  onClick={() => {
+                    setShowDreamArchive(false);
+                    setSelectedDream(dream);
+                  }}
+                  className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl p-3 text-left hover:bg-slate-700/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium truncate">{dream.title}</p>
+                      <p className="text-slate-500 text-xs truncate">{dream.summary}</p>
+                    </div>
+                    <span className="text-slate-600 text-xs ml-2 whitespace-nowrap">
+                      {formatDate(dream.timestamp)}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

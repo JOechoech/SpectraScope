@@ -12,6 +12,7 @@
 import { useState, useMemo, memo, useEffect, useCallback } from 'react';
 import { Edit2, Trash2, PieChart, TrendingUp, TrendingDown, RefreshCw, FileText, Clock, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 import { Header } from '@/components/layout';
+import { Sparkline } from '@/components/charts/Sparkline';
 import { PortfolioAnalysis } from '@/components/portfolio/PortfolioAnalysis';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
 import { useQuoteCacheStore } from '@/stores/useQuoteCacheStore';
@@ -133,6 +134,7 @@ export const PortfolioView = memo(function PortfolioView({
       costBasis?: number;
       profitLoss?: number;
       profitLossPercent?: number;
+      sparkline?: number[];
     }> = [];
 
     // FIX: Iterate directly over holdings, NOT watchlistItems!
@@ -172,6 +174,7 @@ export const PortfolioView = memo(function PortfolioView({
         profitLossPercent: holding.avgCost && price > 0
           ? ((price - holding.avgCost) / holding.avgCost) * 100
           : undefined,
+        sparkline: watchlistItem?.sparkline,
       });
     });
 
@@ -397,11 +400,11 @@ export const PortfolioView = memo(function PortfolioView({
                   onClick={() => onSelectStock(pos.symbol)}
                   className="p-4 cursor-pointer hover:bg-slate-800/50 transition-colors"
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <div
-                          className={`w-3 h-3 rounded-full ${
+                          className={`w-3 h-3 rounded-full flex-shrink-0 ${
                             COLORS[index % COLORS.length]
                           }`}
                         />
@@ -412,9 +415,22 @@ export const PortfolioView = memo(function PortfolioView({
                           {pos.shares} shares
                         </span>
                       </div>
-                      <p className="text-slate-400 text-sm mt-0.5">{pos.name}</p>
+                      <p className="text-slate-400 text-sm mt-0.5 truncate">{pos.name}</p>
                     </div>
-                    <div className="text-right">
+                    {/* Sparkline Chart - Right aligned before price */}
+                    <div className="w-20 h-8 mx-4 flex-shrink-0">
+                      {pos.sparkline && pos.sparkline.length > 0 ? (
+                        <Sparkline
+                          data={pos.sparkline}
+                          width={80}
+                          height={32}
+                          color={pos.changePercent >= 0 ? 'bullish' : 'bearish'}
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-slate-800/30 rounded animate-pulse" />
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0">
                       <p className="text-white font-semibold">
                         $
                         {pos.value.toLocaleString(undefined, {
