@@ -61,12 +61,12 @@ interface ApiKeysState {
   clearAllKeys: () => void;
 }
 
-// Validation patterns
+// Validation patterns - flexible to accept various key formats
 const keyPatterns: Partial<Record<keyof ApiKeys, RegExp>> = {
   polygon: /^[a-zA-Z0-9_]{20,}$/,
   finnhub: /^[a-z0-9]{15,}$/,
   anthropic: /^sk-ant-[a-zA-Z0-9-]{40,}$/,
-  openai: /^sk-[a-zA-Z0-9]{20,}$/,
+  openai: /^sk-[a-zA-Z0-9_-]{20,}$/,  // Accepts sk-proj-, sk-svcacct-, etc.
   grok: /^xai-[a-zA-Z0-9]{20,}$/,
   gemini: /^[a-zA-Z0-9_-]{30,}$/,
   perplexity: /^pplx-[a-zA-Z0-9]{20,}$/,
