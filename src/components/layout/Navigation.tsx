@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Home, Search, Settings } from 'lucide-react';
+import { Home, Search, Briefcase, Settings } from 'lucide-react';
 import type { ViewName } from '@/types';
 
 interface NavigationProps {
@@ -16,11 +16,12 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: 'watchlist', label: 'Home', icon: Home },
   { id: 'search', label: 'Search', icon: Search },
+  { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 /**
- * Bottom navigation bar - Sleek, minimal design
+ * Bottom navigation bar - Sleek, minimal design with 4 tabs
  */
 export const Navigation = memo(function Navigation({
   currentView,
@@ -32,7 +33,7 @@ export const Navigation = memo(function Navigation({
   }
 
   return (
-    <nav className="flex items-center justify-around bg-black/95 backdrop-blur-lg border-t border-slate-800/50 px-2 py-1 safe-bottom">
+    <nav className="flex items-center justify-around bg-black/95 backdrop-blur-lg border-t border-slate-800/50 px-1 py-1 safe-bottom">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = currentView === item.id;
@@ -42,7 +43,7 @@ export const Navigation = memo(function Navigation({
             key={item.id}
             onClick={() => onNavigate(item.id)}
             className={`
-              flex flex-col items-center justify-center py-2 px-6 rounded-xl
+              flex flex-col items-center justify-center py-2 px-4 rounded-xl
               transition-all duration-200
               ${isActive
                 ? 'text-blue-400'

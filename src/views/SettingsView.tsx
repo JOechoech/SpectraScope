@@ -145,7 +145,7 @@ export const SettingsView = memo(function SettingsView({
   } = useApiKeysStore();
 
   const { totalCost, totalAnalyses, clearHistory } = useAnalysisStore();
-  const { oledMode, setOledMode } = useSettingsStore();
+  const { oledMode, toggleOledMode } = useSettingsStore();
 
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>(() => {
@@ -389,7 +389,7 @@ export const SettingsView = memo(function SettingsView({
                 </div>
               </div>
               <button
-                onClick={() => setOledMode(!oledMode)}
+                onClick={toggleOledMode}
                 className={`w-14 h-8 rounded-full transition-all duration-300 ${
                   oledMode ? 'bg-blue-500' : 'bg-slate-700'
                 }`}
