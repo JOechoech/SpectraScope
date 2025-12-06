@@ -9,8 +9,9 @@
  * - Source attribution for intelligence sources
  */
 
-import { useState, useEffect, memo, useCallback } from 'react';
-import { ArrowLeft, RefreshCw, AlertCircle } from 'lucide-react';
+import { useState, useEffect, memo, useCallback, useRef } from 'react';
+import { ArrowLeft, RefreshCw, AlertCircle, Share2, Copy, Download, Check } from 'lucide-react';
+import html2canvas from 'html2canvas';
 import { useApiKeysStore } from '@/stores/useApiKeysStore';
 import { useAnalysisStore } from '@/stores/useAnalysisStore';
 import { useWatchlistStore } from '@/stores/useWatchlistStore';
@@ -98,26 +99,216 @@ export const DetailView = memo(function DetailView({
   const [analysisPhase, setAnalysisPhase] = useState<AnalysisPhase>('idle');
   const [sourceReports, setSourceReports] = useState<SourceReport[]>([]);
 
+  // Export functionality
+  const analysisRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+
   const companyName =
     watchlistItems.find((w) => w.symbol === symbol)?.name ||
     COMPANY_NAMES[symbol] ||
     symbol;
 
-  // Check if analysis is recent (within 24 hours)
-  const isAnalysisRecent = (timestamp: string): boolean => {
+  // Cached analysis timestamp for age indicator
+  const [cachedTimestamp, setCachedTimestamp] = useState<string | null>(null);
+
+  // Get precise age indicator with color
+  const getAgeIndicator = (timestamp: string): { text: string; color: string; colorClass: string } => {
     const analysisTime = new Date(timestamp).getTime();
     const now = Date.now();
     const hoursDiff = (now - analysisTime) / (1000 * 60 * 60);
-    return hoursDiff < 24;
+
+    if (hoursDiff < 1) {
+      return { text: 'Fresh', color: '#10b981', colorClass: 'text-emerald-400' };
+    } else if (hoursDiff < 72) {
+      const hours = Math.floor(hoursDiff);
+      return { text: `${hours} hour${hours === 1 ? '' : 's'} old`, color: '#f59e0b', colorClass: 'text-amber-400' };
+    } else {
+      const days = Math.floor(hoursDiff / 24);
+      return { text: `${days} day${days === 1 ? '' : 's'} old`, color: '#64748b', colorClass: 'text-slate-400' };
+    }
   };
+
+  // Generate markdown text from analysis
+  const generateMarkdown = useCallback(() => {
+    if (!analysis) return '';
+
+    const date = cachedTimestamp ? new Date(cachedTimestamp).toLocaleDateString() : new Date().toLocaleDateString();
+    const { scenarios, confidence, bottomLine } = analysis;
+
+    return `# ${symbol} - SpectraScope Analysis
+**${companyName}** | Generated ${date}
+
+## Bottom Line
+${bottomLine || 'AI-powered investment analysis'}
+
+---
+
+## 🐂 Bull Case (${scenarios.bull.probability}%)
+**${scenarios.bull.title}**
+${scenarios.bull.summary}
+
+**Price Target:** ${scenarios.bull.priceTarget}
+**Timeframe:** ${scenarios.bull.timeframe}
+
+### Catalysts
+${scenarios.bull.catalysts.map(c => `- ${c}`).join('\n')}
+
+### Risks
+${scenarios.bull.risks.map(r => `- ${r}`).join('\n')}
+
+---
+
+## 📊 Base Case (${scenarios.base.probability}%)
+**${scenarios.base.title}**
+${scenarios.base.summary}
+
+**Price Target:** ${scenarios.base.priceTarget}
+**Timeframe:** ${scenarios.base.timeframe}
+
+### Catalysts
+${scenarios.base.catalysts.map(c => `- ${c}`).join('\n')}
+
+### Risks
+${scenarios.base.risks.map(r => `- ${r}`).join('\n')}
+
+---
+
+## 🐻 Bear Case (${scenarios.bear.probability}%)
+**${scenarios.bear.title}**
+${scenarios.bear.summary}
+
+**Price Target:** ${scenarios.bear.priceTarget}
+**Timeframe:** ${scenarios.bear.timeframe}
+
+### Catalysts
+${scenarios.bear.catalysts.map(c => `- ${c}`).join('\n')}
+
+### Risks
+${scenarios.bear.risks.map(r => `- ${r}`).join('\n')}
+
+---
+
+*🔭 Made with SpectraScope | AI-Powered Investment Intelligence*
+*Confidence: ${confidence}%*
+`;
+  }, [analysis, symbol, companyName, cachedTimestamp]);
+
+  // Copy analysis as markdown
+  const copyAsMarkdown = useCallback(async () => {
+    const markdown = generateMarkdown();
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }, [generateMarkdown]);
+
+  // Export analysis as branded image
+  const exportAsImage = useCallback(async () => {
+    if (!analysisRef.current || !analysis) return;
+
+    setIsExporting(true);
+    try {
+      // Create a wrapper div with branding footer
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = `
+        background: #000;
+        padding: 24px;
+        width: 800px;
+      `;
+
+      // Clone the analysis content
+      const clone = analysisRef.current.cloneNode(true) as HTMLElement;
+      clone.style.cssText = 'width: 100%; background: #000;';
+      wrapper.appendChild(clone);
+
+      // Add branded footer
+      const footer = document.createElement('div');
+      const date = new Date().toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      footer.innerHTML = `
+        <div style="
+          margin-top: 24px;
+          padding: 20px;
+          background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+          border: 1px solid #334155;
+          border-radius: 12px;
+          text-align: center;
+        ">
+          <div style="font-size: 24px; margin-bottom: 8px;">🔭</div>
+          <div style="color: #fff; font-weight: bold; font-size: 14px; letter-spacing: 2px;">
+            MADE WITH SPECTRASCOPE
+          </div>
+          <div style="color: #94a3b8; font-size: 12px; margin-top: 4px;">
+            AI-Powered Investment Intelligence
+          </div>
+          <div style="color: #64748b; font-size: 11px; margin-top: 8px;">
+            Generated ${date}
+          </div>
+        </div>
+      `;
+      wrapper.appendChild(footer);
+
+      // Temporarily add to DOM
+      document.body.appendChild(wrapper);
+
+      // Capture with html2canvas
+      const canvas = await html2canvas(wrapper, {
+        scale: 2, // 2x for retina
+        backgroundColor: '#000',
+        logging: false,
+        useCORS: true,
+      });
+
+      // Remove wrapper from DOM
+      document.body.removeChild(wrapper);
+
+      // Convert to blob
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((b) => resolve(b!), 'image/png', 1.0);
+      });
+
+      // Try native share first (mobile)
+      if (navigator.share && navigator.canShare?.({ files: [new File([blob], `${symbol}-analysis.png`, { type: 'image/png' })] })) {
+        const file = new File([blob], `${symbol}-analysis.png`, { type: 'image/png' });
+        await navigator.share({
+          files: [file],
+          title: `${symbol} Analysis - SpectraScope`,
+          text: `AI-powered analysis for ${symbol}`,
+        });
+      } else {
+        // Fallback: download the image
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${symbol}-spectrascope-analysis.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('Export failed:', err);
+    } finally {
+      setIsExporting(false);
+      setShowShareMenu(false);
+    }
+  }, [analysis, symbol]);
 
   // Load price data on mount and check for cached analysis
   useEffect(() => {
     loadPriceData();
 
-    // Check for existing analysis
+    // Check for existing analysis - load ANY cached analysis (users pay for these!)
     const existing = getLatestAnalysis(symbol);
-    if (existing?.result && isAnalysisRecent(existing.timestamp)) {
+    if (existing?.result) {
       // Convert existing analysis to our format
       const result = existing.result as any;
       setAnalysis({
@@ -136,6 +327,7 @@ export const DetailView = memo(function DetailView({
           cost: existing.cost,
         } : undefined,
       });
+      setCachedTimestamp(existing.timestamp);
       // Skip to results phase since we have cached data
       setAnalysisPhase('results');
     }
@@ -385,31 +577,42 @@ export const DetailView = memo(function DetailView({
 
         {/* News is now analyzed via OpenAI during Scope Analysis */}
 
-        {/* Scope Button - Show refresh option if cached analysis exists */}
-        {analysisPhase === 'results' && analysis ? (
+        {/* Scope Button - Always show refresh option */}
+        {analysisPhase === 'results' && analysis && cachedTimestamp ? (
           <div className="space-y-3">
-            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-400">✓</span>
-                  <span className="text-emerald-400 text-sm font-medium">
-                    Analysis loaded from cache
-                  </span>
+            {(() => {
+              const age = getAgeIndicator(cachedTimestamp);
+              const bgColor = age.colorClass.includes('emerald')
+                ? 'bg-emerald-500/10 border-emerald-500/30'
+                : age.colorClass.includes('amber')
+                ? 'bg-amber-500/10 border-amber-500/30'
+                : 'bg-slate-500/10 border-slate-500/30';
+              return (
+                <div className={`p-4 ${bgColor} border rounded-xl`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={age.colorClass}>●</span>
+                      <span className={`${age.colorClass} text-sm font-medium`}>
+                        {age.text}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setAnalysisPhase('idle');
+                        setAnalysis(null);
+                        setCachedTimestamp(null);
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-500 transition-colors"
+                    >
+                      Refresh Analysis
+                    </button>
+                  </div>
+                  <p className="text-slate-500 text-xs mt-2">
+                    Analyses are saved forever. Refresh to get the latest data (~$0.02).
+                  </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setAnalysisPhase('idle');
-                    setAnalysis(null);
-                  }}
-                  className="px-3 py-1.5 bg-slate-800/50 text-slate-300 rounded-lg text-sm hover:bg-slate-700/50 transition-colors"
-                >
-                  Refresh Analysis
-                </button>
-              </div>
-              <p className="text-slate-500 text-xs mt-2">
-                Cached analyses save you money. Click Refresh to run a new analysis (~$0.02).
-              </p>
-            </div>
+              );
+            })()}
           </div>
         ) : (
           <ScopeButton
@@ -433,12 +636,60 @@ export const DetailView = memo(function DetailView({
 
         {/* Analysis Results - only show when in 'results' phase */}
         {analysisPhase === 'results' && analysis && (
-          <div className="space-y-4">
+          <div ref={analysisRef} className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-white">AI Analysis</h3>
-              <span className="text-slate-400 text-sm">
-                Confidence: {analysis.confidence}%
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400 text-sm">
+                  {analysis.confidence}%
+                </span>
+
+                {/* Share Menu */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowShareMenu(!showShareMenu)}
+                    className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/50 transition-colors"
+                  >
+                    <Share2 size={18} />
+                  </button>
+
+                  {showShareMenu && (
+                    <>
+                      {/* Backdrop */}
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowShareMenu(false)}
+                      />
+                      {/* Menu */}
+                      <div className="absolute right-0 top-10 z-50 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-xl overflow-hidden">
+                        <button
+                          onClick={exportAsImage}
+                          disabled={isExporting}
+                          className="w-full px-4 py-3 flex items-center gap-3 text-left text-white hover:bg-slate-800 transition-colors"
+                        >
+                          <Download size={16} className="text-blue-400" />
+                          <span className="text-sm">
+                            {isExporting ? 'Exporting...' : 'Export as Image'}
+                          </span>
+                        </button>
+                        <button
+                          onClick={copyAsMarkdown}
+                          className="w-full px-4 py-3 flex items-center gap-3 text-left text-white hover:bg-slate-800 transition-colors border-t border-slate-800"
+                        >
+                          {copied ? (
+                            <Check size={16} className="text-emerald-400" />
+                          ) : (
+                            <Copy size={16} className="text-slate-400" />
+                          )}
+                          <span className="text-sm">
+                            {copied ? 'Copied!' : 'Copy as Markdown'}
+                          </span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Bottom Line Summary - FIRST! */}

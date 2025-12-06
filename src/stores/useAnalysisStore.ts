@@ -104,24 +104,8 @@ function getDominantScenario(result: AnalysisResult): 'bull' | 'bear' | 'base' {
   return 'base';
 }
 
-function cleanOldEntries(
-  analyses: Record<string, AnalysisEntry[]>,
-  maxAgeDays: number = 30
-): Record<string, AnalysisEntry[]> {
-  const cutoffTime = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
-  const cleaned: Record<string, AnalysisEntry[]> = {};
-
-  Object.entries(analyses).forEach(([symbol, entries]) => {
-    const validEntries = entries.filter(
-      (entry) => new Date(entry.timestamp).getTime() > cutoffTime
-    );
-    if (validEntries.length > 0) {
-      cleaned[symbol] = validEntries;
-    }
-  });
-
-  return cleaned;
-}
+// Note: Analyses are persisted FOREVER - users pay for these!
+// Only manual clearing via Settings is allowed
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STORE
@@ -146,8 +130,9 @@ export const useAnalysisStore = create<AnalysisState>()(
 
         set((state) => {
           const existing = state.analyses[symbol] || [];
-          // Keep max 10 entries per symbol, newest first
-          const updated = [entryWithId, ...existing].slice(0, 10);
+          // Keep ALL analyses per symbol (users pay for these!)
+          // Max 50 per symbol to prevent localStorage overflow
+          const updated = [entryWithId, ...existing].slice(0, 50);
 
           return {
             analyses: { ...state.analyses, [symbol]: updated },
@@ -199,12 +184,11 @@ export const useAnalysisStore = create<AnalysisState>()(
     }),
     {
       name: 'spectrascope-analysis',
-      version: 1,
-      // Clean up old entries on rehydration
+      version: 2, // Bumped version for permanent storage
+      // No auto-cleanup - analyses persist forever (users pay for these!)
       onRehydrateStorage: () => (state) => {
         if (state) {
-          state.analyses = cleanOldEntries(state.analyses);
-          // Reset transient state
+          // Reset transient state only
           state.isAnalyzing = false;
           state.currentSymbol = null;
         }
